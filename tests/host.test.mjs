@@ -11,19 +11,23 @@ const stub = source.replace("import { defineTool } from '@deepseek-ai/dsh-tools'
   .replace("import { runGraphify } from './runtime.js'", "const graphifyCalls=[]; const runGraphify = async (...args) => { graphifyCalls.push(args); return 'mock Graphify' }")
   .replace("export { runGraphify } from './runtime.js'", 'export { runGraphify, graphifyCalls }')
   .replace("import { createAutoGraphManager } from './auto.js'", "const createAutoGraphManager = () => ({ attach: async () => {}, detach: () => {}, stop: () => {} })")
-  .replace("import { readSettings } from './settings.js'", "const readSettings = () => ({mode: 'auto', scope: 'sessions',debounceSeconds:3,excludePatterns:[]})")
+  .replace("import { readSettings } from './settings.js'", "const readSettings = () => ({mode: 'auto', agentUsage:'smart', scope: 'sessions',allowlist:[],debounceSeconds:3,excludePatterns:[]})")
+  .replace("import { graphifyAgentGuidance } from './agent-guidance.js'", "const graphifyAgentGuidance = context => 'Graphify assistant guidance for '+context.session.id")
   .replace("export { Config } from './settings.js'", "export const Config = {}")
 const host = await import('data:text/javascript,' + encodeURIComponent(stub))
+const guidanceSections=[]
+const systemPrompt={section: x => { guidanceSections.push(x); return () => {} }}
 test('Host plugin exports five original Graphify DSH Agent tools', () => {
   const list = []
-  const ctx = { sandboxPolicy: { workspaceRoot: tmpdir() }, tools: { register: x => list.push(x) } }
+  const ctx = { sandboxPolicy: { workspaceRoot: tmpdir() }, systemPrompt,effect: callback => callback(),tools: { register: x => list.push(x) } }
   host.apply(ctx)
   assert.deepEqual(list.map(x => x.name), ['graphify_build', 'graphify_query', 'graphify_path', 'graphify_explain', 'graphify_affected'])
   assert.ok(list[0].parameters.directory)
+  assert.ok(guidanceSections.some(x=>x.name==='tool:graphify-project-intelligence'))
 })
 test('Native DSH tool schemas use required:true only for required arguments', async () => {
   const tools = []
-  const ctx = { sandboxPolicy: { workspaceRoot: tmpdir() }, tools: { register: tool => tools.push(tool) } }
+  const ctx = { sandboxPolicy: { workspaceRoot: tmpdir() }, systemPrompt,effect: callback => callback(),tools: { register: tool => tools.push(tool) } }
   host.apply(ctx)
   for (const tool of tools) {
     for (const [key, property] of Object.entries(tool.parameters)) {
@@ -40,7 +44,7 @@ test('Native DSH tool schemas use required:true only for required arguments', as
   const root = await mkdtemp(join(tmpdir(), 'graphify-host-tools-'))
   try {
     const list=[]
-    const ctx={sandboxPolicy:{workspaceRoot:root},tools:{register:x=>list.push(x)}}
+    const ctx={sandboxPolicy:{workspaceRoot:root},systemPrompt,effect:callback=>callback(),tools:{register:x=>list.push(x)}}
     host.apply(ctx)
     const build = list.find(tool=>tool.name==='graphify_build')
     const query = list.find(tool=>tool.name==='graphify_query')
@@ -79,6 +83,7 @@ test('DSH session policy root, not Host fallback, selects project directory', as
         workspaceRoot: join(temp, 'host-fallback'),
         resolve: ({ session }) => ({ workspaceRoot: session?.header?.cwd || temp }),
       },
+      systemPrompt,
       tools: { register: t => tools.push(t) },
       sessions: { list: () => [] },
       on: (name, callback) => listeners.set(name, callback),
@@ -107,4 +112,11 @@ test('Workspace path validator blocks .. and symbolic-link escapes', async () =>
       await assert.rejects(host.projectDirectory(base, 'escape'), /outside/)
     }
   } finally { await rm(temp, { recursive: true, force: true }) }
+})
+
+test('Graphify prompt guidance is dynamically scoped to the current Agent session', () => {
+  const guide = guidanceSections.at(-1)
+  assert.equal(guide.text({}), '')
+  const result = guide.text({agent:{session:{id:'project-1',header:{cwd:tmpdir()}}}})
+  assert.equal(result,'Graphify assistant guidance for project-1')
 })
