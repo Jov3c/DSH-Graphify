@@ -153,7 +153,7 @@ export function createAutoGraphManager({
     const id = session?.id
     const cwd = session?.header?.cwd
     if (disposed || typeof id !== 'string' || typeof cwd !== 'string' || sessions.has(id)) return
-    const token = { root: undefined }
+    const token = { root: undefined, session }
     sessions.set(id, token)
     try {
       const root = await resolveProject(workspaceRoot(session), cwd)
@@ -212,7 +212,7 @@ export function createAutoGraphManager({
     // finish but its old watcher cannot initiate new work.
     const active=[...sessions].filter(([,token])=>token.root)
     sessions.clear()
-    for(const [id,token] of active)void attach({id,header:{cwd:token.root}})
+    for(const [,token] of active)void attach(token.session)
   }
 
   function stop() {
