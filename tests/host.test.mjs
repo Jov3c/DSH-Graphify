@@ -11,6 +11,8 @@ const stub = source.replace("import { defineTool } from '@deepseek-ai/dsh-tools'
   .replace("import { runGraphify } from './runtime.js'", "const runGraphify = async () => 'mock Graphify'")
   .replace("export { runGraphify } from './runtime.js'", 'export { runGraphify }')
   .replace("import { createAutoGraphManager } from './auto.js'", "const createAutoGraphManager = () => ({ attach: async () => {}, detach: () => {}, stop: () => {} })")
+  .replace("import { readSettings } from './settings.js'", "const readSettings = () => ({mode: 'auto', scope: 'sessions',debounceSeconds:3,excludePatterns:[]})")
+  .replace("export { Config } from './settings.js'", "export const Config = {}")
 const host = await import('data:text/javascript,' + encodeURIComponent(stub))
 test('Host plugin exports two native DSH Agent tools', () => {
   const list = []
