@@ -209,10 +209,15 @@ export function createAutoGraphManager({
 
   function refreshSettings() {
     if(disposed)return
+    const next = config()
     for(const p of projects.values()){
       p.closed=true
       clearTimeout(p.timer)
       p.watcher?.close()
+      if (next.mode === 'off' || next.mode === 'manual' || !allowedProject(p.root,next)) {
+        void writeStatus(p.root, 'paused', 'Graphify background indexing disabled by current settings', { watching:false })
+          .catch(error => log('status write error: ' + error))
+      }
     }
     projects.clear()
     // Re-apply policy to known sessions. Any already-running subprocess can
