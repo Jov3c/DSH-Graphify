@@ -6,7 +6,7 @@
 import { watch as watchFs, existsSync } from 'node:fs'
 import { mkdir, writeFile, readFile } from 'node:fs/promises'
 import { join, extname, relative, isAbsolute, resolve } from 'node:path'
-import { DEFAULT_SETTINGS } from './settings.js'
+import { DEFAULT_SETTINGS } from './defaults.js'
 
 export const STATUS_NAME = '.dsh-graphify-status.json'
 export const AUTO_DEBOUNCE_MS = 3000
