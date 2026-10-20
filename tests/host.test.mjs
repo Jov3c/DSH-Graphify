@@ -17,6 +17,27 @@ test('Host plugin exports two native DSH Agent tools', () => {
   assert.deepEqual(list.map(x => x.name), ['graphify_build', 'graphify_query'])
   assert.ok(list[0].parameters.directory)
 })
+test('Native DSH tool schemas use required:true only for required arguments', async () => {
+  const tools = []
+  const ctx = { sandboxPolicy: { workspaceRoot: tmpdir() }, tools: { register: tool => tools.push(tool) } }
+  host.apply(ctx)
+  for (const tool of tools) {
+    for (const [key, property] of Object.entries(tool.parameters)) {
+      assert.ok(!Object.hasOwn(property, 'required') || property.required === true,
+        `${tool.name}.${key}: optional arguments must omit required rather than use false`)
+    }
+  }
+  const build = tools.find(tool => tool.name === 'graphify_build')
+  const query = tools.find(tool => tool.name === 'graphify_query')
+  assert.equal(Object.hasOwn(build.parameters.directory, 'required'), false)
+  assert.equal(Object.hasOwn(build.parameters.update, 'required'), false)
+  assert.equal(Object.hasOwn(query.parameters.directory, 'required'), false)
+  assert.equal(query.parameters.question.required, true)
+  const result = await build.execute({})
+  assert.match(result, /mock Graphify/)
+  assert.equal(await query.execute({ question: 'Show module dependencies' }), 'mock Graphify')
+})
+
 test('Workspace path validator blocks .. and symbolic-link escapes', async () => {
   const temp = await mkdtemp(join(tmpdir(), 'dsh-graphify-'))
   const base = join(temp, 'base'), inside = join(base, 'inside'), outside = join(temp, 'outside')
