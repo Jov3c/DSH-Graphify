@@ -64,7 +64,7 @@ test('Native DSH tool schemas use required:true only for required arguments', as
     assert.deepEqual(host.graphifyCalls.at(-1)[0],['path','Auth','DB'])
     assert.equal(await explain.execute({node:'Auth'}),'mock Graphify')
     assert.deepEqual(host.graphifyCalls.at(-1)[0],['explain','Auth'])
-    assert.match(await affected.execute({node:'Auth',depth:3}),/^mock Graphify\\n\\nSupplemental code graph audit test/)
+    assert.match(await affected.execute({node:'Auth',depth:3}),/^mock Graphify\n\nSupplemental code graph audit test/)
     assert.deepEqual(host.graphifyCalls.at(-1)[0],['affected','Auth','--depth','3'])
     await assert.rejects(affected.execute({node:'Auth',depth:99}),/1–5/)
     await assert.rejects(path.execute({source:'',target:'DB'}),/source must/)
