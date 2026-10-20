@@ -1,7 +1,7 @@
 {
   "name": "@jov3c/dsh-graphify",
-  "version": "0.1.0",
-  "description": "Native Graphify knowledge graph viewer and agent tools for DeepSeek Harness",
+  "version": "0.2.0-beta.1",
+  "description": "DSH Desktop-native Graphify viewer and Agent tools with automatically managed local engine",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
@@ -35,7 +35,7 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node --test tests/client.test.mjs tests/host.test.mjs",
+    "test": "node --test tests/client.test.mjs tests/host.test.mjs tests/runtime.test.mjs",
     "check": "npm run build && npm test"
   },
   "license": "MIT",
