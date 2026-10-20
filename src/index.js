@@ -1,6 +1,7 @@
 import { resolve, relative, isAbsolute } from 'node:path'
 import { realpath, stat } from 'node:fs/promises'
 import { runGraphify } from './runtime.js'
+import { createAutoGraphManager } from './auto.js'
 export { runGraphify } from './runtime.js'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
@@ -28,6 +29,19 @@ function output() {
 
 export function apply(ctx) {
   const workspace = () => ctx.sandboxPolicy.workspaceRoot
+  const auto = createAutoGraphManager({
+    run: runGraphify,
+    resolveProject: projectDirectory,
+    workspaceRoot: workspace,
+    log: message => ctx.logger?.warn?.(message),
+  })
+  // DSH Session events supply the actual project cwd. Nothing is scanned or
+  // downloaded until an authorized local project session becomes active.
+  if (process.env.DSH_GRAPHIFY_AUTO !== '0' && typeof ctx.on === 'function') {
+    ctx.on('session/created', session => { void auto.attach(session) })
+    ctx.on('session/disposed', session => { auto.detach(session) })
+    ctx.effect?.(() => () => auto.stop())
+  }
   ctx.tools.register(defineTool({
     name: 'graphify_build',
     description: 'Build or update a Graphify knowledge graph in a permitted local project directory. First run downloads a verified isolated uv/Python/Graphify engine into plugin-managed cache; no separate user installation required. No shell command injection. After completion tell user to open/refresh the Graphify right sidebar tab.',
