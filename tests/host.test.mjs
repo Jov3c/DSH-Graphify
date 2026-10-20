@@ -1,24 +1,24 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { mkdtemp, mkdir, symlink, rm, realpath } from 'node:fs/promises'
+import { mkdtemp, mkdir, symlink, rm, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const source = readFileSync(join(root, 'src/index.js'), 'utf8')
 const stub = source.replace("import { defineTool } from '@deepseek-ai/dsh-tools'", 'const defineTool = x => x')
-  .replace("import { runGraphify } from './runtime.js'", "const runGraphify = async () => 'mock Graphify'")
-  .replace("export { runGraphify } from './runtime.js'", 'export { runGraphify }')
+  .replace("import { runGraphify } from './runtime.js'", "const graphifyCalls=[]; const runGraphify = async (...args) => { graphifyCalls.push(args); return 'mock Graphify' }")
+  .replace("export { runGraphify } from './runtime.js'", 'export { runGraphify, graphifyCalls }')
   .replace("import { createAutoGraphManager } from './auto.js'", "const createAutoGraphManager = () => ({ attach: async () => {}, detach: () => {}, stop: () => {} })")
   .replace("import { readSettings } from './settings.js'", "const readSettings = () => ({mode: 'auto', scope: 'sessions',debounceSeconds:3,excludePatterns:[]})")
   .replace("export { Config } from './settings.js'", "export const Config = {}")
 const host = await import('data:text/javascript,' + encodeURIComponent(stub))
-test('Host plugin exports two native DSH Agent tools', () => {
+test('Host plugin exports five original Graphify DSH Agent tools', () => {
   const list = []
   const ctx = { sandboxPolicy: { workspaceRoot: tmpdir() }, tools: { register: x => list.push(x) } }
   host.apply(ctx)
-  assert.deepEqual(list.map(x => x.name), ['graphify_build', 'graphify_query'])
+  assert.deepEqual(list.map(x => x.name), ['graphify_build', 'graphify_query', 'graphify_path', 'graphify_explain', 'graphify_affected'])
   assert.ok(list[0].parameters.directory)
 })
 test('Native DSH tool schemas use required:true only for required arguments', async () => {
@@ -37,9 +37,34 @@ test('Native DSH tool schemas use required:true only for required arguments', as
   assert.equal(Object.hasOwn(build.parameters.update, 'required'), false)
   assert.equal(Object.hasOwn(query.parameters.directory, 'required'), false)
   assert.equal(query.parameters.question.required, true)
-  const result = await build.execute({})
-  assert.match(result, /mock Graphify/)
-  assert.equal(await query.execute({ question: 'Show module dependencies' }), 'mock Graphify')
+  const root = await mkdtemp(join(tmpdir(), 'graphify-host-tools-'))
+  try {
+    const list=[]
+    const ctx={sandboxPolicy:{workspaceRoot:root},tools:{register:x=>list.push(x)}}
+    host.apply(ctx)
+    const build = list.find(tool=>tool.name==='graphify_build')
+    const query = list.find(tool=>tool.name==='graphify_query')
+    const path = list.find(tool=>tool.name==='graphify_path')
+    const explain = list.find(tool=>tool.name==='graphify_explain')
+    const affected = list.find(tool=>tool.name==='graphify_affected')
+    const answer = await build.execute({})
+    assert.match(answer,/mock Graphify/)
+    assert.deepEqual(host.graphifyCalls.at(-1)[0].slice(0,3),['extract','.','--code-only'])
+    await assert.rejects(query.execute({question:'show code'}),/graphify_build/)
+    await mkdir(join(root,'graphify-out'))
+    await writeFile(join(root,'graphify-out','graph.json'),'{"nodes":[],"links":[]}')
+    assert.equal(await query.execute({question:'show code'}),'mock Graphify')
+    assert.deepEqual(host.graphifyCalls.at(-1)[0],['query','show code'])
+    assert.equal(await path.execute({source:'Auth',target:'DB'}),'mock Graphify')
+    assert.deepEqual(host.graphifyCalls.at(-1)[0],['path','Auth','DB'])
+    assert.equal(await explain.execute({node:'Auth'}),'mock Graphify')
+    assert.deepEqual(host.graphifyCalls.at(-1)[0],['explain','Auth'])
+    assert.equal(await affected.execute({node:'Auth',depth:3}),'mock Graphify')
+    assert.deepEqual(host.graphifyCalls.at(-1)[0],['affected','Auth','--depth','3'])
+    await assert.rejects(affected.execute({node:'Auth',depth:99}),/1–5/)
+    await assert.rejects(path.execute({source:'',target:'DB'}),/source must/)
+    await assert.rejects(query.execute({question:' '}),/1–1000/)
+  }finally{await rm(root,{recursive:true,force:true})}
 })
 
 test('DSH session policy root, not Host fallback, selects project directory', async () => {
@@ -63,7 +88,7 @@ test('DSH session policy root, not Host fallback, selects project directory', as
     assert.ok(listeners.has('session/created'))
     assert.ok(listeners.has('session/disposed'))
     const result = await tools[0].execute({}, { agent: { session: { header: { cwd: project } } } })
-    assert.match(result, /Graphify project:/)
+    assert.match(result, /Graphify code-only graph:/)
     assert.ok(result.includes(await realpath(project)))
   } finally { await rm(temp, { recursive: true, force: true }) }
 })
