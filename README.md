@@ -2,7 +2,7 @@
 
 把 [Graphify](https://github.com/Graphify-Labs/graphify) 生成的代码知识图谱直接显示在 **DeepSeek Harness (DSH)** 的右侧工作区中，并让 DSH Agent 通过原生工具建立和查询图谱。
 
-> **状态：v0.3.0-beta.2 · 自动图谱预览版。** DSH Desktop 新建/打开本地项目会话时自动构建代码知识图谱，源文件变更后自动更新，右侧 Graphify 面板自动显示结果。仍需在实际 DSH Desktop 上完成联调；当前自动索引仅用于本地代码，不会自动调用大模型分析文档或媒体。
+> **状态：v0.4.0-beta.1 · 自动图谱预览版。** DSH Desktop 新建/打开本地项目会话时自动构建代码知识图谱，源文件变更后自动更新，右侧 Graphify 面板自动显示结果。仍需在实际 DSH Desktop 上完成联调；当前自动索引仅用于本地代码，不会自动调用大模型分析文档或媒体。
 
 ## 主要功能
 
@@ -42,7 +42,7 @@ dsh --profile desktop --dump-config
 
 > DSH Desktop 使用专门的 `desktop` Profile；请直接通过 **Desktop 自带的插件管理器** 安装。已安装旧版 GitHub 插件时，通过「已安装插件」卸载旧版、重新安装同一地址并重启即可更新。
 
-## v0.3.0-beta.2 修复说明
+## v0.4.0-beta.1 修复说明
 
 - 修复 DSH `workspaceFiles.readBytes` 返回 `RemoteResult` 时字段解包错误（此前会显示 `Unexpected end of JSON input`）。
 - 插件激活时从 `ctx.sessions.list()` 补接管已经恢复的本地项目会话；避免错过 `session/created`。
@@ -50,13 +50,33 @@ dsh --profile desktop --dump-config
 - 若从上一版更新，请使用 DSH Desktop 插件管理：卸载旧版、重新添加本仓库 URL 并重新启用，必要时重启 Desktop。
 - 尚未在真实 DSH Desktop 安装环境完成端到端验证；GitHub CI 只覆盖模拟接口和 Node 测试。
 
+## 原生设置面板（v0.4.0-beta.1）
+
+在 DSH Desktop 中打开项目 → 右侧 **Graphify → ⚙ 设置**。设置由 DSH 官方 `configForms` / Host 设置文档持久化，不依赖浏览器 LocalStorage。选择后点击 **保存设置**；Host 的 `loader/volatile-update` 事件会在不重启插件的情况下更新运行时规则。
+
+| 选项 | 默认 | 行为 |
+| --- | --- | --- |
+| 自动触发 | 自动 | 项目会话创建时构建；本地源码保存后 3 秒防抖增量分析 |
+| 轻量模式 | - | 仅在项目会话打开时刷新，不持续监听文件 |
+| 手动模式 | - | 不自动扫描；用户明确让 Agent 使用 `graphify_build` 时仍可执行 |
+| 关闭模式 | - | 不调度任何后台分析；Agent 工具仍可独立使用 |
+| 扫描工作区 | 本地会话项目 | 只能扫描当前已激活的本地项目目录 |
+| 白名单 | 空 | 开启白名单模式后只会自动扫描**绝对路径精确匹配**的项目；空白名单表示不自动扫描任何项目 |
+| 防抖 | 3 秒 | 1–15 秒，仅自动监听模式生效 |
+| 排除规则 | 常见依赖目录、敏感文件 | 每行一个，通过 Graphify `extract --code-only --exclude` 传递给真实扫描器 |
+| 自动 AI 分析 | 始终禁用 | 设置面板只作状态说明；自动构建绝不调用 LLM |
+
+**注意**：Graphify 官方的 `extract . --code-only` 在存在图谱时自动进行增量更新，因此自动构建统一使用这一命令，以免 `update` 绕过本插件设置的排除规则。更改扫描规则会重新评估该项目，正在运行的旧扫描可能先完成。
+
+项目自己的 `.gitignore` 和 `.graphifyignore` 继续生效。排除规则属于索引层过滤，不是操作系统级权限沙箱；切换规则之前已存在的旧图谱可能需要重新生成才能完全排除历史数据。
+
 ## 使用方法
 
 ### 1. 自动后台构建
 
-在 DSH Desktop **新建或打开本地项目会话**，无需向 Agent 发送额外指令。Host 监听 `session/created` 事件，从该会话的 `header.cwd` 获取项目路径，经过真实路径和 DSH 沙箱根目录校验后启动任务：无图谱时运行 `graphify extract . --code-only`，有缓存时运行 `graphify update`。首次使用由插件在自己的缓存目录自动准备 uv/Python/Graphify（需要联网），不会弹出 PowerShell 或占用 AI Token。
+在 DSH Desktop **新建或打开本地项目会话**，无需向 Agent 发送额外指令。Host 监听 `session/created` 事件，从该会话的 `header.cwd` 获取项目路径，经过真实路径和 DSH 沙箱根目录校验后启动任务：无图谱时运行 `graphify extract . --code-only`，有缓存时运行 `graphify extract . --code-only` 的增量模式。首次使用由插件在自己的缓存目录自动准备 uv/Python/Graphify（需要联网），不会弹出 PowerShell 或占用 AI Token。
 
-生成在该项目的 `graphify-out/graph.json`、`graphify-out/GRAPH_REPORT.md` 等。插件另写 `graphify-out/.dsh-graphify-status.json` 用于显示进度和错误。对于源码修改，以约 3 秒防抖触发 `graphify update`；Git 与 node_modules 等输出目录不会触发重建。文档或图片变更只提醒需语义更新，**不会自动调用 LLM**。
+生成在该项目的 `graphify-out/graph.json`、`graphify-out/GRAPH_REPORT.md` 等。插件另写 `graphify-out/.dsh-graphify-status.json` 用于显示进度和错误。对于源码修改，采用配置的 1–15 秒防抖后触发 `graphify extract . --code-only` 增量更新；Git 与 node_modules 等输出目录不会触发重建。文档或图片变更只提醒需语义更新，**不会自动调用 LLM**。
 
 多个会话打开同一目录只维护一份监听；关闭最后一个会话会关闭监听。若项目在沙箱外、使用远端工作区或不支持递归文件监听，则不会越权扫描；仍可使用 `graphify_build` 明确构建。设置 Host 环境变量 `DSH_GRAPHIFY_AUTO=0` 可关闭自动模式。
 
@@ -83,7 +103,7 @@ Host 通过插件管理的 Graphify CLI 调用 `graphify query <question>`，返
 - Agent 工具只允许 `sandboxPolicy.workspaceRoot` 目录及其后代；解析 realpath 后验证路径，防止 `..` 或符号链接越界。工具使用 `spawn(shell:false)`，不执行拼接的 Shell 命令。
 - 使用 Graphify 的外部文档 / 图像语义抽取时，可能调用你配置的模型服务。源码 AST 解析无需上传模型。选择适当的 Graphify 模式并保护项目数据。
 - UI 从 DSH 已有 `workspaceFiles` Remote 读取文件，沿用 DSH 的文件访问策略与大小限制（默认完整文件 32 MiB）。
-- **当前版本不支持**：独立的面板内「强制重新构建」按钮、点击源码直接跳转、跨仓库混合图谱、大图聚合、Agent 主动定位图谱节点，以及与 DSH TUI 集成。自动更新只针对受允许的本地会话目录与代码文件；大项目扫描可能占用 CPU。
+- **当前版本不支持**：自动 LLM 语义分析、独立的面板内「强制重新构建」按钮、点击源码直接跳转、跨仓库混合图谱、大图聚合、Agent 主动定位图谱节点，以及与 DSH TUI 集成。自动更新只针对受允许的本地会话目录与代码文件；大项目扫描可能占用 CPU。
 - 插件不会在 DSH 启动时扫描所有磁盘；**进入本地项目会话会自动触发扫描**，首次扫描可能联网下载引擎；退出会话会关闭监听。
 - 部分 DSH 发行版可能存在与目前主分支不兼容的 API 差异；因此须在本机实际试装和反馈报错。
 
