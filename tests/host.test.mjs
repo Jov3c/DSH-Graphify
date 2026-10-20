@@ -9,6 +9,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const source = readFileSync(join(root, 'src/index.js'), 'utf8')
 const stub = source.replace("import { defineTool } from '@deepseek-ai/dsh-tools'", 'const defineTool = x => x')
   .replace(/import \{ runGraphify \} from '\.\/runtime\.js'\r?\nexport \{ runGraphify \} from '\.\/runtime\.js'/, "const runGraphify = async () => 'mock Graphify'\nexport { runGraphify }")
+  .replace("import { createAutoGraphManager } from './auto.js'", "const createAutoGraphManager = () => ({ attach: async () => {}, detach: () => {}, stop: () => {} })")
 const host = await import('data:text/javascript,' + encodeURIComponent(stub))
 test('Host plugin exports two native DSH Agent tools', () => {
   const list = []
