@@ -53,6 +53,7 @@ test('DSH session policy root, not Host fallback, selects project directory', as
         resolve: ({ session }) => ({ workspaceRoot: session?.header?.cwd || temp }),
       },
       tools: { register: t => tools.push(t) },
+      sessions: { list: () => [] },
       on: (name, callback) => listeners.set(name, callback),
       effect: callback => callback(),
     }
