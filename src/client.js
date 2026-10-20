@@ -32,6 +32,9 @@ function GraphSettings({ form, close }) {
   useEffect(() => {
     if (snapshot?.status !== 'ready' || dirty) return
     const value = { ...GRAPHIFY_DEFAULTS, ...snapshot.value }
+    // Migrate older 1–15s debounce settings to the new, calmer interval.
+    if (!Number.isFinite(value.debounceSeconds) || value.debounceSeconds < 5 || value.debounceSeconds > 120) value.debounceSeconds=20
+    if (!Number.isFinite(value.minIntervalSeconds) || value.minIntervalSeconds < 30 || value.minIntervalSeconds > 900) value.minIntervalSeconds=180
     setDraft({ ...value,
       allowlistText: Array.isArray(value.allowlist) ? value.allowlist.join('\n') : '',
       excludeText: Array.isArray(value.excludePatterns) ? value.excludePatterns.join('\n') : '',
