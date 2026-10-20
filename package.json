@@ -1,6 +1,6 @@
 {
   "name": "@jov3c/dsh-graphify",
-  "version": "0.2.0-beta.1",
+  "version": "0.2.0-beta.2",
   "description": "DSH Desktop-native Graphify viewer and Agent tools with automatically managed local engine",
   "type": "module",
   "main": "./lib/index.js",
