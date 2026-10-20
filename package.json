@@ -1,7 +1,7 @@
 {
   "name": "@jov3c/dsh-graphify",
-  "version": "0.7.1-beta.1",
-  "description": "Graphify DSH integration with non-disruptive graph updates, throttled auto-indexing and natural-language Agent tools",
+  "version": "0.8.0-beta.1",
+  "description": "Original Graphify in DSH Desktop: stronger natural-language tool selection, evidence-aware impact analysis and unobtrusive auto-indexing",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
@@ -36,7 +36,7 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node --test tests/client.test.mjs tests/host.test.mjs tests/runtime.test.mjs tests/auto.test.mjs tests/settings.test.mjs tests/guidance.test.mjs",
+    "test": "node --test tests/client.test.mjs tests/host.test.mjs tests/runtime.test.mjs tests/auto.test.mjs tests/settings.test.mjs tests/guidance.test.mjs tests/impact-context.test.mjs",
     "check": "npm run build && npm test"
   },
   "license": "MIT",
