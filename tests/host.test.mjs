@@ -13,6 +13,7 @@ const stub = source.replace("import { defineTool } from '@deepseek-ai/dsh-tools'
   .replace("import { createAutoGraphManager } from './auto.js'", "const createAutoGraphManager = () => ({ attach: async () => {}, detach: () => {}, stop: () => {} })")
   .replace("import { readSettings } from './settings.js'", "const readSettings = () => ({mode: 'auto', agentUsage:'smart', scope: 'sessions',allowlist:[],debounceSeconds:3,excludePatterns:[]})")
   .replace("import { graphifyAgentGuidance } from './agent-guidance.js'", "const graphifyAgentGuidance = context => 'Graphify assistant guidance for '+context.session.id")
+  .replace("import { readImpactContext } from './impact-context.js'", "const readImpactContext = async () => 'Supplemental code graph audit test'")
   .replace("export { Config } from './settings.js'", "export const Config = {}")
 const host = await import('data:text/javascript,' + encodeURIComponent(stub))
 const guidanceSections=[]
@@ -63,7 +64,7 @@ test('Native DSH tool schemas use required:true only for required arguments', as
     assert.deepEqual(host.graphifyCalls.at(-1)[0],['path','Auth','DB'])
     assert.equal(await explain.execute({node:'Auth'}),'mock Graphify')
     assert.deepEqual(host.graphifyCalls.at(-1)[0],['explain','Auth'])
-    assert.equal(await affected.execute({node:'Auth',depth:3}),'mock Graphify')
+    assert.match(await affected.execute({node:'Auth',depth:3}),/^mock Graphify\\n\\nSupplemental code graph audit test/)
     assert.deepEqual(host.graphifyCalls.at(-1)[0],['affected','Auth','--depth','3'])
     await assert.rejects(affected.execute({node:'Auth',depth:99}),/1–5/)
     await assert.rejects(path.execute({source:'',target:'DB'}),/source must/)
