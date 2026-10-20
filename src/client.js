@@ -267,7 +267,7 @@ function GraphPanel(props) {
     status.error ? h('div', { role: 'alert', style: { padding: 12, border: '1px solid #c779795c', borderRadius: 10, fontSize: 12 } },
       h('strong', null, 'No graph is available in this project.'),
       h('p', { style: { overflowWrap: 'anywhere' } }, status.error),
-      h('p', null, 'Ask the DSH Agent to use graphify_build, or run ', h('code', null, 'graphify .'), ' in the project directory. Then click Refresh.'),
+      h('p', null, 'Ask the DSH Agent to use graphify_build for this project. On first use the plugin automatically downloads and configures its isolated engine. Then click Refresh.'),
     ) : null,
     graph ? h(GraphCanvas, { graph, selected, onSelect: n => { setSelected(n); setPathTarget('') }, filterCommunity: community, highlightedPath: path, viewport, setViewport }) : h('div', { style: { flex: 1 } }),
     current ? h('div', { style: { padding: 10, border: '1px solid #8490a04f', borderRadius: 10, fontSize: 12, maxHeight: 200, overflowY: 'auto' } },
@@ -282,7 +282,7 @@ function GraphPanel(props) {
         pathTarget ? pill(path.length ? `${path.length - 1} hops` : 'No path') : null,
       )
     ) : null,
-    h('div', { style: { opacity: .58, fontSize: 11, lineHeight: '16px' } }, 'Data: graphify-out/graph.json · Source parsing remains local. Ask Agent: “Use graphify_build to update this project”.'),
+    h('div', { style: { opacity: .58, fontSize: 11, lineHeight: '16px' } }, 'Data: graphify-out/graph.json · Local code parsing. Ask Agent: “Use graphify_build to build or update this project”.'),
   )
 }
 
