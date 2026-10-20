@@ -50,7 +50,8 @@ export function classifyChange(filename, excludePatterns=[]) {
   const parts = name.split('/').filter(Boolean)
   if (!parts.length || parts.some(part => IGNORE.has(part))) return 'ignore'
   const leaf = parts.at(-1)
-  if (leaf.startsWith('.') && leaf !== '.graphifyrc') return 'ignore'
+  if (leaf === '.graphifyignore' || leaf === '.gitignore' || leaf === '.graphifyrc') return 'code'
+  if (leaf.startsWith('.')) return 'ignore'
   if (leaf === 'pnpm-lock.yaml' || leaf === 'package-lock.json' || leaf === 'yarn.lock') return 'ignore'
   if (leaf === '.graphifyrc') return 'code'
   const ext = extname(leaf).toLowerCase()
@@ -134,11 +135,17 @@ export function createAutoGraphManager({
         const args = ['extract', '.', '--code-only']
         for(const pattern of config().excludePatterns)args.push('--exclude',pattern)
         await run(args, project.root, { timeoutMs: 600_000 })
+        // Settings may have been switched to off while Graphify was running.
+        // A stale task must not overwrite the paused status after it exits.
+        if (project.closed || disposed) return
         if (!existsSync(graphFile(project.root))) throw new Error('Graphify completed but graphify-out/graph.json is missing')
-        await writeStatus(project.root, 'ready',
-          project.documentsStale ? 'Code graph ready. Documents/media require separate semantic refresh.' : 'Graph up to date',
-          { watching: !!project.watcher, documentsStale: project.documentsStale })
-      } catch (error) { reportFailure(project, error) }
+        const htmlAvailable = existsSync(join(project.root, 'graphify-out', 'graph.html'))
+        const detail = !htmlAvailable
+          ? 'Code graph ready, but Graphify did not generate graph.html. This can occur for tiny graphs with fewer than two useful communities.'
+          : project.documentsStale ? 'Code graph ready. Documents/media require separate semantic refresh.' : 'Graph up to date'
+        await writeStatus(project.root, 'ready', detail,
+          { watching: !!project.watcher, documentsStale: project.documentsStale, htmlAvailable })
+      } catch (error) { if (!project.closed && !disposed) reportFailure(project, error) }
       finally {
         project.running = undefined
         if (project.dirty && !project.closed && !disposed && config().mode==='auto') {
