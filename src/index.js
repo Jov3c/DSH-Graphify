@@ -1,5 +1,7 @@
 import { resolve, relative, isAbsolute } from 'node:path'
 import { realpath, stat } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { runGraphify } from './runtime.js'
 import { createAutoGraphManager } from './auto.js'
 import { readSettings } from './settings.js'
@@ -49,33 +51,97 @@ export function apply(ctx, configuration) {
     for (const session of ctx.sessions.list()) void auto.attach(session)
     ctx.effect?.(() => () => auto.stop())
   }
+  // Basic graph analysis is explicitly local and code-only. Semantic extraction
+  // must remain a separate user-authorized future feature.
   ctx.tools.register(defineTool({
     name: 'graphify_build',
-    description: 'Build or update a Graphify knowledge graph in a permitted local project directory. First run downloads a verified isolated uv/Python/Graphify engine into plugin-managed cache; no separate user installation required. No shell command injection. After completion tell user to open/refresh the Graphify right sidebar tab.',
+    description: 'Create or incrementally refresh the local CODE graph for the active DSH project. Executes official Graphify extract --code-only; never calls an LLM or uploads project files. Use when missing or stale.',
     parameters: {
-      directory: { type: 'string', description: 'Relative project directory under current DSH workspace root, or an absolute directory inside it. Defaults to policy workspace root.' },
-      update: { type: 'boolean', description: 'If true, use graphify update instead of a full rebuild.' },
+      directory: { type: 'string', description: 'Optional project directory inside current DSH workspace.' },
+      update: { type: 'boolean', description: 'When true, reuse incremental graph extraction (the code-only extractor also incrementally updates by default).' },
     },
     output: output(),
     async execute(args, exec) {
       const cwd = await projectDirectory(workspace(exec?.agent?.session), args.directory || '')
-      const result = await runGraphify(args.update ? ['update'] : ['.'], cwd, { timeoutMs: 180_000 })
-      return `Graphify project: ${cwd}\n${result}`
+      const options = readSettings(configuration)
+      const parameters = ['extract', '.', '--code-only']
+      for (const pattern of options.excludePatterns) parameters.push('--exclude', pattern)
+      const result = await runGraphify(parameters, cwd, { timeoutMs: 600_000 })
+      return 'Graphify code-only graph: ' + cwd + '\n' + result
+    },
+  }))
+  async function existingGraph(args, exec) {
+    const cwd = await projectDirectory(workspace(exec?.agent?.session), args.directory || '')
+    if (!existsSync(join(cwd, 'graphify-out', 'graph.json'))) {
+      throw new Error('No Graphify graph in this project. Run graphify_build first.')
+    }
+    return cwd
+  }
+  function requireLabel(value, name) {
+    const label = String(value || '').trim()
+    if (!label || label.length > 200) throw new Error(name + ' must be 1–200 characters')
+    return label
+  }
+  ctx.tools.register(defineTool({
+    name: 'graphify_query',
+    description: 'Prefer this for scoped questions about the active project codebase, modules and dependencies before broad file searches. Queries the existing local Graphify graph; confirm important results against source code.',
+    parameters: {
+      question: { type: 'string', required: true, description: 'Codebase question, 1–1000 characters.' },
+      directory: { type: 'string', description: 'Optional local project directory inside current DSH workspace.' },
+    },
+    output: output(),
+    async execute(args, exec) {
+      const question = String(args.question || '').trim()
+      if (!question || question.length > 1000) throw new Error('question must be 1–1000 characters')
+      const cwd = await existingGraph(args, exec)
+      return await runGraphify(['query', question], cwd, { timeoutMs: 45_000 })
     },
   }))
   ctx.tools.register(defineTool({
-    name: 'graphify_query',
-    description: 'Query an existing local Graphify graph for code dependencies or concepts. Build the graph first if missing.',
+    name: 'graphify_path',
+    description: 'Find the original Graphify shortest relationship path between two named code symbols or modules; use when asked how A relates to B.',
     parameters: {
-      question: { type: 'string', required: true, description: 'Question about the indexed project.' },
-      directory: { type: 'string', description: 'Project directory inside current DSH workspace root.' },
+      source: { type: 'string', required: true, description: 'Start node name.' },
+      target: { type: 'string', required: true, description: 'End node name.' },
+      directory: { type: 'string', description: 'Optional local project directory inside current DSH workspace.' },
     },
     output: output(),
     async execute(args, exec) {
-      if (!String(args.question || '').trim()) throw new Error('A non-empty question is required')
-      if (String(args.question).length > 1000) throw new Error('Question too long (max 1000 characters)')
-      const cwd = await projectDirectory(workspace(exec?.agent?.session), args.directory || '')
-      return await runGraphify(['query', args.question], cwd, { timeoutMs: 45_000 })
+      const source = requireLabel(args.source, 'source')
+      const target = requireLabel(args.target, 'target')
+      const cwd = await existingGraph(args, exec)
+      return await runGraphify(['path', source, target], cwd, { timeoutMs: 45_000 })
+    },
+  }))
+  ctx.tools.register(defineTool({
+    name: 'graphify_explain',
+    description: 'Explain an indexed code symbol, its source location, community and relationships using official Graphify; useful before editing unfamiliar code.',
+    parameters: {
+      node: { type: 'string', required: true, description: 'Graph node or code symbol name.' },
+      directory: { type: 'string', description: 'Optional local project directory inside current DSH workspace.' },
+    },
+    output: output(),
+    async execute(args, exec) {
+      const node = requireLabel(args.node, 'node')
+      const cwd = await existingGraph(args, exec)
+      return await runGraphify(['explain', node], cwd, { timeoutMs: 45_000 })
+    },
+  }))
+  ctx.tools.register(defineTool({
+    name: 'graphify_affected',
+    description: 'Analyze potential code change blast radius for a symbol or module before editing; validate important dependencies against current source code.',
+    parameters: {
+      node: { type: 'string', required: true, description: 'Node to analyze.' },
+      depth: { type: 'integer', description: 'Relationship depth 1–5, default 2.' },
+      directory: { type: 'string', description: 'Optional local project directory inside current DSH workspace.' },
+    },
+    output: output(),
+    async execute(args, exec) {
+      const node = requireLabel(args.node, 'node')
+      const depth = args.depth === undefined ? 2 : args.depth
+      if (!Number.isInteger(depth) || depth < 1 || depth > 5) throw new Error('depth must be an integer 1–5')
+      const cwd = await existingGraph(args, exec)
+      return await runGraphify(['affected', node, '--depth', String(depth)], cwd, { timeoutMs: 45_000 })
     },
   }))
 }
