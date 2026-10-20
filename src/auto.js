@@ -128,7 +128,7 @@ export function createAutoGraphManager({
     const token = { root: undefined }
     sessions.set(id, token)
     try {
-      const root = await resolveProject(workspaceRoot(), cwd)
+      const root = await resolveProject(workspaceRoot(session), cwd)
       if (disposed || sessions.get(id) !== token) return
       let project = projects.get(root)
       if (!project) {
