@@ -75,3 +75,18 @@ test('original Graphify HTML is embedded without replacing original force-direct
   assert.ok(!app.includes('function GraphCanvas'))
   assert.ok(!app.includes('allow-same-origin'))
 })
+
+test('background revisions never replace a viewed graph until user explicitly refreshes',()=>{
+  const {graphRefreshAction}=loadClient().__test
+  assert.equal(graphRefreshAction(null,null,false,false),'none')
+  assert.equal(graphRefreshAction(null,'v1',false,false),'reload')
+  assert.equal(graphRefreshAction(null,'v1',true,false),'none')
+  assert.equal(graphRefreshAction('v1','v1',true,true),'none')
+  assert.equal(graphRefreshAction('v1','v2',true,true),'notify')
+  assert.equal(graphRefreshAction('v2','v3',false,true),'reload')
+  const code=readFileSync(resolve(root,'src/client.js'),'utf8')
+  assert.ok(code.includes('图谱已更新；为保留当前缩放'))
+  assert.ok(code.includes('加载最新图谱'))
+  assert.ok(!code.includes('value.updatedAt !== lastReady'))
+  assert.ok(code.includes("display:showSettings?'none':'flex'"))
+})
