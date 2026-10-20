@@ -1,6 +1,6 @@
 {
   "name": "@jov3c/dsh-graphify",
-  "version": "0.3.0-beta.1",
+  "version": "0.3.0-beta.2",
   "description": "DSH Desktop-native automatic local code graph indexing, live visualization, and Agent tools",
   "type": "module",
   "main": "./lib/index.js",
