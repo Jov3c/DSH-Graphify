@@ -29,8 +29,9 @@ export function inspectImpactGraph(raw, requested, { maxCandidates = 14 } = {}) 
   const seed = bare[0]
   const direct = edges.filter(e => e && String(e.target)===seed.id &&
     ['calls','indirect_call','imports','imports_from','references','dynamic_import','re_exports','uses','extends','inherits','implements'].includes(e.relation))
-  const directDependents = [...new Map(direct.map(e => {
-    const n=byId.get(e.source);return n ? [n.id,{label:label(n),file:source(n),relation:clean(e.relation),location:clean(e.source_location || n.source_location || '')}] : []
+  const directDependents = [...new Map(direct.flatMap(e => {
+    const n=byId.get(e.source)
+    return n ? [[n.id,{label:label(n),file:source(n),relation:clean(e.relation),location:clean(e.source_location || n.source_location || '')}]] : []
   })).values()].slice(0, 16)
   const parentIds = new Set(edges.filter(e=>String(e.target)===seed.id && IMPORTS.has(e.relation)).map(e=>e.source))
   const candidates = new Map()
