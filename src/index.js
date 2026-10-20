@@ -6,6 +6,7 @@ import { runGraphify } from './runtime.js'
 import { createAutoGraphManager } from './auto.js'
 import { readSettings } from './settings.js'
 import { graphifyAgentGuidance } from './agent-guidance.js'
+import { readImpactContext } from './impact-context.js'
 export { Config } from './settings.js'
 export { runGraphify } from './runtime.js'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -105,7 +106,7 @@ export function apply(ctx, configuration) {
   }
   ctx.tools.register(defineTool({
     name: 'graphify_query',
-    description: 'Prefer this for scoped questions about the active project codebase, modules and dependencies before broad file searches. Queries the existing local Graphify graph; confirm important results against source code.',
+    description: 'FIRST choice for natural-language project architecture, files, module dependency and code organization questions, before expensive broad source searches. Use existing graph; then verify source when needed. Do not call for unrelated conversation.',
     parameters: {
       question: { type: 'string', required: true, description: 'Codebase question, 1–1000 characters.' },
       directory: { type: 'string', description: 'Optional local project directory inside current DSH workspace.' },
@@ -120,7 +121,7 @@ export function apply(ctx, configuration) {
   }))
   ctx.tools.register(defineTool({
     name: 'graphify_path',
-    description: 'Find the original Graphify shortest relationship path between two named code symbols or modules; use when asked how A relates to B.',
+    description: 'Use for natural-language questions about how two project functions, modules or services communicate or depend on each other; returns the Graphify static relationship path.',
     parameters: {
       source: { type: 'string', required: true, description: 'Start node name.' },
       target: { type: 'string', required: true, description: 'End node name.' },
@@ -136,7 +137,7 @@ export function apply(ctx, configuration) {
   }))
   ctx.tools.register(defineTool({
     name: 'graphify_explain',
-    description: 'Explain an indexed code symbol, its source location, community and relationships using official Graphify; useful before editing unfamiliar code.',
+    description: 'Use for natural-language questions about what one project module, function or class does and how it connects. Looks up its indexed Graphify neighbors; verify source before editing.',
     parameters: {
       node: { type: 'string', required: true, description: 'Graph node or code symbol name.' },
       directory: { type: 'string', description: 'Optional local project directory inside current DSH workspace.' },
@@ -150,7 +151,7 @@ export function apply(ctx, configuration) {
   }))
   ctx.tools.register(defineTool({
     name: 'graphify_affected',
-    description: 'Analyze potential code change blast radius for a symbol or module before editing; validate important dependencies against current source code.',
+    description: 'Use this FIRST for natural-language requests about what modifying a project module, class, function, login flow, API, or data model might break. Runs original Graphify reverse dependency analysis and supplies contextual co-import candidates, tests and completeness warnings. Never claim dynamic/runtime dependencies are covered without checking actual source.',
     parameters: {
       node: { type: 'string', required: true, description: 'Node to analyze.' },
       depth: { type: 'integer', description: 'Relationship depth 1–5, default 2.' },
@@ -162,7 +163,14 @@ export function apply(ctx, configuration) {
       const depth = args.depth === undefined ? 2 : args.depth
       if (!Number.isInteger(depth) || depth < 1 || depth > 5) throw new Error('depth must be an integer 1–5')
       const cwd = await existingGraph(args, exec)
-      return await runGraphify(['affected', node, '--depth', String(depth)], cwd, { timeoutMs: 45_000 })
+      const original=await runGraphify(['affected', node, '--depth', String(depth)], cwd, { timeoutMs: 45_000 })
+      let context
+      try {
+        context=await readImpactContext(cwd,node)
+      } catch (error) {
+        context='Supplemental graph audit unavailable: ' + (error instanceof Error ? error.message : String(error))
+      }
+      return original + '\n\n' + context
     },
   }))
 }
