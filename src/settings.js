@@ -2,13 +2,8 @@ import Schema from '@deepseek-ai/schemastery'
 
 /** Native DSH Host settings. All fields use volatile references: changes do
  * not remount the plugin and never execute arbitrary Agent commands. */
-export const DEFAULT_SETTINGS = Object.freeze({
-  mode: 'auto',
-  scope: 'sessions',
-  allowlist: [],
-  debounceSeconds: 3,
-  excludePatterns: ['node_modules/', 'dist/', 'build/', 'coverage/', '.env*', 'secrets/', '*.pem', '*.key'],
-})
+import { DEFAULT_SETTINGS } from './defaults.js'
+export { DEFAULT_SETTINGS } from './defaults.js'
 export const Config = Schema.object({
   mode: Schema.union(['auto', 'open', 'manual', 'off']).default('auto').volatile(),
   scope: Schema.union(['sessions', 'allowlist']).default('sessions').volatile(),
