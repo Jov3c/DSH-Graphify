@@ -52,22 +52,32 @@ test('layout is deterministic and finite', () => {
   for (const [, xy] of p) { assert.ok(Number.isFinite(xy.x)); assert.ok(Number.isFinite(xy.y)) }
 })
 test('broken graph is rejected', () => assert.throws(() => normaliseGraph({nodes: []}), /No nodes/))
-test('client exports apply + inject and uses official sidebar extension', () => {
+test('client exports apply + inject and uses official sidebar extension', async () => {
   const api = loadClient()
   assert.equal(typeof api.apply, 'function')
   assert.ok(api.inject.includes('remote.workspaceFiles'))
   let definition = null, slot = null
+  const reads = []
   const ctx = {
     sidebarRightTabs: { register(obj) { definition = obj; return () => {} } },
     slots: { inject(_name, cb) { cb(); return () => {} }, register(obj, component) { slot = { obj, component }; return () => {} } },
     effect(fn) { fn() },
-    remote: { workspaceFiles: { readBytes: async () => ({ data: new Uint8Array() }) } },
+    remote: { workspaceFiles: { readBytes: async (id, path) => { reads.push({id, path}); return { data: new Uint8Array() } } } },
   }
   api.apply(ctx)
   assert.equal(definition.kind, 'graphify')
   assert.equal(definition.guide[0].id, 'graphify.open')
   assert.equal(slot.obj.key, '@jov3c/dsh-graphify')
   assert.equal(typeof slot.component, 'function')
+  const injected = slot.obj.inject('my-session')
+  assert.equal(typeof injected.loadGraph, 'function')
+  assert.equal(typeof injected.loadStatus, 'function')
+  await injected.loadGraph()
+  await injected.loadStatus()
+  assert.deepEqual(reads, [
+    { id: 'my-session', path: 'graphify-out/graph.json' },
+    { id: 'my-session', path: 'graphify-out/.dsh-graphify-status.json' },
+  ])
 })
 test('prebuilt client is self-registering DSH factory', () => {
   const bundle = readFileSync(resolve(root, 'lib/client.js'), 'utf8')
