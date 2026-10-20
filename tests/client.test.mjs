@@ -73,13 +73,16 @@ test('client exports apply + inject and uses official sidebar extension', async 
   const injected = slot.obj.inject('my-session')
   assert.equal(typeof injected.loadGraph, 'function')
   assert.equal(typeof injected.loadStatus, 'function')
+  assert.equal(typeof injected.loadHtml, 'function')
   assert.equal(injected.settingsForm.id,'dsh-graphify')
   assert.ok(api.inject.includes('configForms'))
   assert.deepEqual([...await injected.loadGraph()], [123, 125])
   assert.deepEqual([...await injected.loadStatus()], [123, 125])
+  assert.deepEqual([...await injected.loadHtml()], [123, 125])
   assert.deepEqual(reads, [
     { id: 'my-session', path: 'graphify-out/graph.json' },
     { id: 'my-session', path: 'graphify-out/.dsh-graphify-status.json' },
+    { id: 'my-session', path: 'graphify-out/graph.html' },
   ])
 })
 test('prebuilt client is self-registering DSH factory', () => {
@@ -90,4 +93,19 @@ test('prebuilt client is self-registering DSH factory', () => {
   assert.equal(typeof result.factory, 'function')
   const plugin = result.factory(name => name === 'react' ? mockReact() : null)
   assert.equal(typeof plugin.apply, 'function')
+})
+
+test('original Graphify HTML is embedded without replacing original force-directed renderer', () => {
+  const { originalGraphDocument } = loadClient().__test
+  const html = '<!DOCTYPE html><html><head><script src="https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js" integrity="sha384-Ux6phic9PEHJ38YtrijhkzyJ8yQlH8i/+buBR8s3mAZOJrP1gwyvAcIYl3GWtpX1"></script></head><body><div id="graph"></div><div id="sidebar"></div><script>const network = new vis.Network(1,2,3)</script></body></html>'
+  const result=originalGraphDocument(html)
+  assert.ok(result.includes('new vis.Network(1,2,3)'))
+  assert.ok(result.includes('<meta http-equiv="Content-Security-Policy"'))
+  assert.ok(result.includes("connect-src 'none'"))
+  assert.ok(result.includes('https://unpkg.com/vis-network@9.1.6'))
+  assert.throws(()=>originalGraphDocument('<html><head></head><body></body></html>'), /recognized Graphify/)
+  assert.throws(()=>originalGraphDocument(html.replace('</head>', '<script src="https://evil.example/attack.js"></script></head>')), /unexpected external script/)
+  const app = readFileSync(resolve(root,'src/client.js'),'utf8')
+  assert.ok(app.includes("sandbox: 'allow-scripts'"))
+  assert.ok(!app.includes('allow-same-origin'))
 })
