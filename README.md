@@ -2,7 +2,7 @@
 
 把 [Graphify](https://github.com/Graphify-Labs/graphify) 生成的代码知识图谱直接显示在 **DeepSeek Harness (DSH)** 的右侧工作区中，并让 DSH Agent 通过原生工具建立和查询图谱。
 
-> **状态：v0.3.0-beta.1 · 自动图谱预览版。** DSH Desktop 新建/打开本地项目会话时自动构建代码知识图谱，源文件变更后自动更新，右侧 Graphify 面板自动显示结果。仍需在实际 DSH Desktop 上完成联调；当前自动索引仅用于本地代码，不会自动调用大模型分析文档或媒体。
+> **状态：v0.3.0-beta.2 · 自动图谱预览版。** DSH Desktop 新建/打开本地项目会话时自动构建代码知识图谱，源文件变更后自动更新，右侧 Graphify 面板自动显示结果。仍需在实际 DSH Desktop 上完成联调；当前自动索引仅用于本地代码，不会自动调用大模型分析文档或媒体。
 
 ## 主要功能
 
@@ -41,6 +41,14 @@ dsh --profile desktop --dump-config
 ```
 
 > DSH Desktop 使用专门的 `desktop` Profile；请直接通过 **Desktop 自带的插件管理器** 安装。已安装旧版 GitHub 插件时，通过「已安装插件」卸载旧版、重新安装同一地址并重启即可更新。
+
+## v0.3.0-beta.2 修复说明
+
+- 修复 DSH `workspaceFiles.readBytes` 返回 `RemoteResult` 时字段解包错误（此前会显示 `Unexpected end of JSON input`）。
+- 插件激活时从 `ctx.sessions.list()` 补接管已经恢复的本地项目会话；避免错过 `session/created`。
+- 如果 graph.json 尚不存在，显示明确的等待/构建提示，而不是 JSON 解析失败。
+- 若从上一版更新，请使用 DSH Desktop 插件管理：卸载旧版、重新添加本仓库 URL 并重新启用，必要时重启 Desktop。
+- 尚未在真实 DSH Desktop 安装环境完成端到端验证；GitHub CI 只覆盖模拟接口和 Node 测试。
 
 ## 使用方法
 
