@@ -6,7 +6,7 @@ export { runGraphify } from './runtime.js'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
 export const name = 'dsh-graphify'
-export const inject = ['tools', 'sandboxPolicy']
+export const inject = ['tools', 'sandboxPolicy', 'sessions']
 
 // No user-supplied shell string is ever executed. Scope is constrained to the
 // composed sandbox policy's filesystem root (not the host process cwd).
@@ -40,6 +40,9 @@ export function apply(ctx) {
   if (process.env.DSH_GRAPHIFY_AUTO !== '0' && typeof ctx.on === 'function') {
     ctx.on('session/created', session => { void auto.attach(session) })
     ctx.on('session/disposed', session => { auto.detach(session) })
+    // Plugin activation may happen after the Desktop has already restored its
+    // blank project Session. Catch up on live Sessions, including that one.
+    for (const session of ctx.sessions.list()) void auto.attach(session)
     ctx.effect?.(() => () => auto.stop())
   }
   ctx.tools.register(defineTool({
