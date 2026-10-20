@@ -1,7 +1,7 @@
 {
   "name": "@jov3c/dsh-graphify",
-  "version": "0.7.0-beta.1",
-  "description": "Graphify for DSH Desktop with original interactive graphs, auto-indexing and natural-language Agent tool selection",
+  "version": "0.7.1-beta.1",
+  "description": "Graphify DSH integration with non-disruptive graph updates, throttled auto-indexing and natural-language Agent tools",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
