@@ -1,0 +1,4 @@
+# Host loads ./lib/index.js; DSH's dsh.client manifest loads ./lib/client.js.
+- insert:
+    - id: dsh-graphify
+      name: '@jov3c/dsh-graphify'
