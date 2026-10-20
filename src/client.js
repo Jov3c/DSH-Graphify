@@ -217,6 +217,8 @@ function GraphCanvas({ graph, selected, onSelect, filterCommunity, highlightedPa
 function GraphPanel(props) {
   const { tab } = props.useTabInfo()
   const [status, setStatus] = useState({ loading: true, graph: null, error: '' })
+  const [autoStatus, setAutoStatus] = useState(null)
+  const lastLoadedStamp = useRef(null)
   const [refresh, setRefresh] = useState(0)
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState(null)
@@ -241,6 +243,36 @@ function GraphPanel(props) {
     return () => { controller.abort(); tab.signal.removeEventListener('abort', abort) }
   }, [refresh, props.loadGraph, tab.visible, tab.signal])
   useEffect(() => tab.actions.bindCommands({ refresh: reload }), [tab.actions, reload])
+
+  // Poll a small per-project status file, not the whole graph. This also
+  // catches background indexing that starts before the panel is opened.
+  useEffect(() => {
+    if (!tab.visible || tab.signal.aborted) return undefined
+    let active = true
+    let inFlight = false
+    const controller = new AbortController()
+    const probe = async () => {
+      if (!active || inFlight) return
+      inFlight = true
+      try {
+        const bytes = await props.loadStatus(controller.signal)
+        const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+        const next = JSON.parse(text)
+        if (!active || !next || !['ready', 'building', 'updating', 'error'].includes(next.state)) return
+        setAutoStatus(next)
+        if (next.state === 'ready' && next.updatedAt !== lastLoadedStamp.current) {
+          lastLoadedStamp.current = next.updatedAt
+          reload()
+        }
+      } catch (_error) {
+        if (active) setAutoStatus(null)
+      } finally { inFlight = false }
+    }
+    void probe()
+    const timer = setInterval(() => { void probe() }, 2500)
+    return () => { active = false; clearInterval(timer); controller.abort() }
+  }, [props.loadStatus, tab.visible, tab.signal, reload])
+
   const graph = status.graph
   const groups = useMemo(() => graph ? [...new Set(graph.nodes.map(n => n.community))] : [], [graph])
   const matches = useMemo(() => graph && search.trim() ? graph.nodes.filter(n => (n.label + ' ' + n.id + ' ' + n.source).toLowerCase().includes(search.toLowerCase())).slice(0, 15) : [], [search, graph])
@@ -254,6 +286,14 @@ function GraphPanel(props) {
       h('button', { style: BUTTON, onClick: reload, disabled: status.loading }, status.loading ? 'Loading…' : '↻ Refresh'),
     ),
     h('div', { style: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' } }, pill(countText), graph && graph.totalNodes > graph.nodes.length ? pill(`Displaying first ${graph.nodes.length} nodes`) : null),
+    autoStatus ? h('div', { role: 'status', style: { fontSize: 12, lineHeight: 1.5, padding: '7px 10px', borderRadius: 8, background: 'var(--dsh-background-subtle,rgba(110,125,145,.1))' } },
+      autoStatus.state === 'building' ? '● Automatically building code graph… ' :
+      autoStatus.state === 'updating' ? '● Updating changed code… ' :
+      autoStatus.state === 'error' ? '⚠ Auto-index failed: ' : '✓ Automatic index: ready. ',
+      autoStatus.detail || '',
+      autoStatus.documentsStale ? ' · Document changes need a separate semantic update.' : null,
+      autoStatus.watching === false ? ' · File watch unavailable.' : null
+    ) : null,
     h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
       h('input', { type: 'search', value: search, style: FIELD, placeholder: 'Search functions, files, classes…', onChange: e => setSearch(e.target.value) }),
       matches.length ? h('div', { style: { maxHeight: 110, overflowY: 'auto', border: '1px solid #8490a04f', borderRadius: 9 } }, matches.map(n =>
@@ -264,10 +304,10 @@ function GraphPanel(props) {
         groups.map(g => h('option', { key: g, value: g }, g))) : null,
     ),
     status.loading ? h('p', { role: 'status', style: { opacity: .7, fontSize: 12 } }, 'Reading graphify-out/graph.json from this session workspace…') : null,
-    status.error ? h('div', { role: 'alert', style: { padding: 12, border: '1px solid #c779795c', borderRadius: 10, fontSize: 12 } },
+    status.error && !['building', 'updating'].includes(autoStatus?.state) ? h('div', { role: 'alert', style: { padding: 12, border: '1px solid #c779795c', borderRadius: 10, fontSize: 12 } },
       h('strong', null, 'No graph is available in this project.'),
       h('p', { style: { overflowWrap: 'anywhere' } }, status.error),
-      h('p', null, 'Ask the DSH Agent to use graphify_build for this project. On first use the plugin automatically downloads and configures its isolated engine. Then click Refresh.'),
+      h('p', null, 'Automatic indexing starts when a permitted local project session opens. If it fails, review the status above, or use the graphify_build Agent tool.'),
     ) : null,
     graph ? h(GraphCanvas, { graph, selected, onSelect: n => { setSelected(n); setPathTarget('') }, filterCommunity: community, highlightedPath: path, viewport, setViewport }) : h('div', { style: { flex: 1 } }),
     current ? h('div', { style: { padding: 10, border: '1px solid #8490a04f', borderRadius: 10, fontSize: 12, maxHeight: 200, overflowY: 'auto' } },
@@ -282,7 +322,7 @@ function GraphPanel(props) {
         pathTarget ? pill(path.length ? `${path.length - 1} hops` : 'No path') : null,
       )
     ) : null,
-    h('div', { style: { opacity: .58, fontSize: 11, lineHeight: '16px' } }, 'Data: graphify-out/graph.json · Local code parsing. Ask Agent: “Use graphify_build to build or update this project”.'),
+    h('div', { style: { opacity: .58, fontSize: 11, lineHeight: '16px' } }, 'Data: graphify-out/graph.json · Local code-only auto-indexing · Agent: graphify_query or graphify_build.'),
   )
 }
 
@@ -297,6 +337,10 @@ exports.apply = function apply(ctx) {
     inject: sessionId => ({
       loadGraph: async signal => {
         const result = await ctx.remote.workspaceFiles.readBytes(sessionId, 'graphify-out/graph.json', {}, signal)
+        return result.data
+      },
+      loadStatus: async signal => {
+        const result = await ctx.remote.workspaceFiles.readBytes(sessionId, 'graphify-out/.dsh-graphify-status.json', {}, signal)
         return result.data
       },
     }),
