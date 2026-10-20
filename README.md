@@ -2,21 +2,17 @@
 
 把 [Graphify](https://github.com/Graphify-Labs/graphify) 生成的代码知识图谱直接显示在 **DeepSeek Harness (DSH)** 的右侧工作区中，并让 DSH Agent 通过原生工具建立和查询图谱。
 
-> **状态：v0.5.0-beta.1 · Graphify 原版渲染器内嵌预览版。** 右侧 Graphify 面板直接读取项目生成的 graphify-out/graph.html，使用原版 vis-network 交互式物理布局、社区图例、搜索和节点详情，保留自动索引、配置、Agent 工具。已提供沙箱隔离及 CI 测试，真实 DSH Desktop 图形渲染仍待验证。
+> **状态：v0.6.0-beta.1 · Graphify 原版渲染器内嵌预览版。** 右侧 Graphify 面板直接读取项目生成的 graphify-out/graph.html，使用原版 vis-network 交互式物理布局、社区图例、搜索和节点详情，保留自动索引、配置、Agent 工具。已提供沙箱隔离及 CI 测试，真实 DSH Desktop 图形渲染仍待验证。
 
-## 主要功能
+## 核心功能
 
-- **右侧栏原生页面**：从 DSH 会话右侧栏的起始/指南页选择 `Graphify`；不需要新开浏览器。
-- **Graphify 可视化**：节点、关系线、社区颜色分组；拖拽画布、滚轮缩放、重置视图。
-- **搜索与定位**：搜索节点名称、源文件；查看源文件位置；筛选社区。
-- **路径查询**：选中节点，再选择目标，显示两个节点间的最短无向关联路径。
-- **原生 Agent 工具**：`graphify_build` 和 `graphify_query`，通过插件自带的运行时管理器调用 Graphify CLI；不将 Agent 提供的内容交给 Shell 解释。
-- **自动建立与更新**：打开受沙箱允许的本地项目会话即后台运行 `graphify extract . --code-only`，后续变化约 3 秒防抖、以 `graphify update` 增量刷新，不占用 Agent 对话。
-- **实时状态**：右侧栏显示构建、更新、失败、文档内容变动提醒；图谱完成后自动重新加载。
-- **免手动安装运行环境**：首次自动构建时安装经 SHA-256 校验的 uv、独立 Python 和官方 Graphify 包，之后复用缓存。
-- **生命周期管理**：同项目多个会话共享监听，最后一个会话关闭后停止监听；不扫描沙箱外路径。
-- **项目隔离**：可视化图谱通过 DSH 自带 `workspaceFiles` Remote，从**当前会话**所在工作区读取 `graphify-out/graph.json`。
-- **无前端 CDN**：UI 依赖 DSH 已有 React 运行时，不加载外部 JavaScript。
+- **Graphify 原版可视化**：DSH 右侧原生标签页加载 `graphify-out/graph.html`，直接使用上游 vis-network 力导向布局、社区筛选、节点搜索与点击详情；在隔离的 iframe 中运行，并非插件自绘的简化 Canvas。
+- **本地代码图谱**：项目会话创建或打开时自动执行官方 `graphify extract . --code-only`。基础索引不调用大模型、不产生 AI 语义抽取费用。
+- **增量更新与控制**：监听源代码保存并防抖更新；设置面板支持自动/仅打开/手动/关闭、工作区白名单、扫描排除规则和 1–15 秒防抖，保存到 DSH Host 配置。
+- **五个 Agent 工具**：`graphify_build`（安全代码构建）、`graphify_query`（自然语言局部查询）、`graphify_path`（双节点路径）、`graphify_explain`（节点关系解释）、`graphify_affected`（修改影响分析）。
+- **可靠性提示**：图谱输出状态区分 `graph.json` 和 `graph.html`；部分很小的图谱可能没有可用的 HTML，可在状态栏查看原因。
+- **引擎自动准备**：首次使用会下载校验后的 uv、独立 Python 和 Graphify，之后复用缓存。不修改系统 Python 或 PATH。
+- **会话与扫描范围隔离**：索引目录必须属于 DSH 会话策略允许的本地项目，不会自动扫描其他磁盘、其他工作区或跨仓库图谱。
 
 ## 环境要求
 
@@ -42,15 +38,16 @@ dsh --profile desktop --dump-config
 
 > DSH Desktop 使用专门的 `desktop` Profile；请直接通过 **Desktop 自带的插件管理器** 安装。已安装旧版 GitHub 插件时，通过「已安装插件」卸载旧版、重新安装同一地址并重启即可更新。
 
-## v0.5.0-beta.1 修复说明
+## v0.6.0-beta.1 更新内容
 
-- 修复 DSH `workspaceFiles.readBytes` 返回 `RemoteResult` 时字段解包错误（此前会显示 `Unexpected end of JSON input`）。
-- 插件激活时从 `ctx.sessions.list()` 补接管已经恢复的本地项目会话；避免错过 `session/created`。
-- 如果 graph.json 尚不存在，显示明确的等待/构建提示，而不是 JSON 解析失败。
-- 若从上一版更新，请使用 DSH Desktop 插件管理：卸载旧版、重新添加本仓库 URL 并重新启用，必要时重启 Desktop。
-- 尚未在真实 DSH Desktop 安装环境完成端到端验证；GitHub CI 只覆盖模拟接口和 Node 测试。
+- 新增官方 Graphify CLI 的 `path`、`explain`、`affected` 对应 DSH Agent 工具；加上 `build`、`query`，合计五项工具。Agent 能主动选择适当的图谱查询，但尚未接入“每次自动查询”策略或 Agent 与图谱节点双向联动。
+- `graphify_build` 默认行为修正为 `extract . --code-only`，同时应用设置的扫描排除规则；不会因项目已有 API Key 自动进入付费语义提取。
+- 将原版 HTML 是否生成单独记录为 `htmlAvailable`；当原版因内容太少/社区不足而跳过 HTML 时，状态说明原因，不误报完成可视化。
+- 切换扫描模式或工作区白名单时，不让旧后台任务完成后覆盖暂停状态；更改 `.gitignore` / `.graphifyignore` 触发重新索引。
+- 删除旧自绘 Canvas 和对应测试；图谱页面只呈现原版 Graphify HTML。
+- Windows/Linux 自动化测试作为验收；**真实 DSH Desktop 原版图谱交互、设置持久化和权限行为仍需本机实测**。
 
-## 原版 Graphify 在 DSH 中查看（v0.5.0-beta.1）
+## 原版 Graphify 在 DSH 中查看（v0.6.0-beta.1）
 
 打开 DSH Desktop 项目会话 → 右侧 **Graphify**。插件直接读取 **当前会话目录的 graphify-out/graph.html**，而不是基于 JSON 手工仿制一张图。显示内容保留了上游 Graphify v8 的 vis-network 力导向物理布局、节点大小、社区图例、搜索、筛选、节点详情和 Light/Dark/System 主题控件。右侧顶部继续保留自动索引状态、刷新、⚙ 设置。
 
@@ -60,7 +57,7 @@ dsh --profile desktop --dump-config
 
 生成项目图谱仍然由插件自动触发的 Graphify CLI 负责，只解析代码，不产生 AI Token。图谱文件按原版生成；如果原版未输出 graph.html，面板会提示等待或错误，不会静默退回自研 Canvas。
 
-## 原生设置面板（v0.5.0-beta.1）
+## 原生设置面板（v0.6.0-beta.1）
 
 在 DSH Desktop 中打开项目 → 右侧 **Graphify → ⚙ 设置**。设置由 DSH 官方 `configForms` / Host 设置文档持久化，不依赖浏览器 LocalStorage。选择后点击 **保存设置**；Host 的 `loader/volatile-update` 事件会在不重启插件的情况下更新运行时规则。
 
@@ -100,11 +97,11 @@ dsh --profile desktop --dump-config
 
 后台构建完成后图谱会自动刷新；也可点击 **Refresh** 重新读取文件。原版 HTML 的大图谱性能和社区聚合行为以 Graphify 自己的导出规则为准，不再使用我们旧 Canvas 的 800 节点显示上限。
 
-### 3. AI 图谱查询
+### 3. 五项原生 Agent 工具
 
 > 用 `graphify_query` 工具分析 UserService 到 Database 之间的依赖。
 
-Host 通过插件管理的 Graphify CLI 调用 `graphify query <question>`，返回文本结果。查询不直接操作 UI；UI 的路径高亮由人选择起点和终点。
+Host 通过插件管理的原版 Graphify CLI 调用 `query`、`path`、`explain`、`affected`，返回文本结果；工具调用前检查当前项目的 `graph.json` 是否存在，并限制会话授权目录。Agent 可选择图谱查询，但还不能自动让 UI 选中图谱节点。
 
 ## 安全与限制
 
@@ -114,7 +111,7 @@ Host 通过插件管理的 Graphify CLI 调用 `graphify query <question>`，返
 - 使用 Graphify 的外部文档 / 图像语义抽取时，可能调用你配置的模型服务。源码 AST 解析无需上传模型。选择适当的 Graphify 模式并保护项目数据。
 - Graphify HTML iframe 内的脚本会通过浏览器从 unpkg.com 加载固定的 vis-network 版本，不会对上游代码或 Graphify 引擎授予 DSH Host 权限。
 - UI 从 DSH 已有 `workspaceFiles` Remote 读取文件，沿用 DSH 的文件访问策略与大小限制（默认完整文件 32 MiB）。
-- **当前版本不支持**：自动 LLM 语义分析、独立的面板内「强制重新构建」按钮、点击源码直接跳转、跨仓库混合图谱、大图聚合、Agent 主动定位图谱节点，以及与 DSH TUI 集成。自动更新只针对受允许的本地会话目录与代码文件；大项目扫描可能占用 CPU。
+- **当前版本不支持**：自动 LLM 语义分析、独立的面板内「强制重新构建」按钮、点击源码直接跳转、跨仓库混合图谱、Agent 主动定位图谱节点，以及与 DSH TUI 集成。自动更新只针对受允许的本地会话目录与代码文件；大项目扫描可能占用 CPU。
 - 插件不会在 DSH 启动时扫描所有磁盘；**进入本地项目会话会自动触发扫描**，首次扫描可能联网下载引擎；退出会话会关闭监听。
 - 部分 DSH 发行版可能存在与目前主分支不兼容的 API 差异；因此须在本机实际试装和反馈报错。
 
