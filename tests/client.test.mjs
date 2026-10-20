@@ -62,6 +62,7 @@ test('client exports apply + inject and uses official sidebar extension', async 
     sidebarRightTabs: { register(obj) { definition = obj; return () => {} } },
     slots: { inject(_name, cb) { cb(); return () => {} }, register(obj, component) { slot = { obj, component }; return () => {} } },
     effect(fn) { fn() },
+    configForms: { get: id => ({ id, getSnapshot: () => ({status:'ready',writable:true,revision:1,value:{mode:'auto',scope:'sessions'}}), subscribe: () => () => {}, mutate: async () => true }) },
     remote: { workspaceFiles: { readBytes: async (id, path) => { reads.push({id, path}); return { ok: true, value: { data: new Uint8Array([123, 125]) } } } } },
   }
   api.apply(ctx)
@@ -72,6 +73,8 @@ test('client exports apply + inject and uses official sidebar extension', async 
   const injected = slot.obj.inject('my-session')
   assert.equal(typeof injected.loadGraph, 'function')
   assert.equal(typeof injected.loadStatus, 'function')
+  assert.equal(injected.settingsForm.id,'dsh-graphify')
+  assert.ok(api.inject.includes('configForms'))
   assert.deepEqual([...await injected.loadGraph()], [123, 125])
   assert.deepEqual([...await injected.loadStatus()], [123, 125])
   assert.deepEqual(reads, [
