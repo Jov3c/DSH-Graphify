@@ -40,6 +40,31 @@ test('Native DSH tool schemas use required:true only for required arguments', as
   assert.equal(await query.execute({ question: 'Show module dependencies' }), 'mock Graphify')
 })
 
+test('DSH session policy root, not Host fallback, selects project directory', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'dsh-gfy-session-'))
+  const project = join(temp, 'project')
+  await mkdir(project)
+  try {
+    const tools = []
+    const listeners = new Map()
+    const ctx = {
+      sandboxPolicy: {
+        workspaceRoot: join(temp, 'host-fallback'),
+        resolve: ({ session }) => ({ workspaceRoot: session?.header?.cwd || temp }),
+      },
+      tools: { register: t => tools.push(t) },
+      on: (name, callback) => listeners.set(name, callback),
+      effect: callback => callback(),
+    }
+    host.apply(ctx)
+    assert.ok(listeners.has('session/created'))
+    assert.ok(listeners.has('session/disposed'))
+    const result = await tools[0].execute({}, { agent: { session: { header: { cwd: project } } } })
+    assert.match(result, /Graphify project:/)
+    assert.ok(result.includes(await realpath(project)))
+  } finally { await rm(temp, { recursive: true, force: true }) }
+})
+
 test('Workspace path validator blocks .. and symbolic-link escapes', async () => {
   const temp = await mkdtemp(join(tmpdir(), 'dsh-graphify-'))
   const base = join(temp, 'base'), inside = join(base, 'inside'), outside = join(temp, 'outside')
