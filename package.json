@@ -1,7 +1,7 @@
 {
   "name": "@jov3c/dsh-graphify",
-  "version": "0.2.0-beta.2",
-  "description": "DSH Desktop-native Graphify viewer and Agent tools with automatically managed local engine",
+  "version": "0.3.0-beta.1",
+  "description": "DSH Desktop-native automatic local code graph indexing, live visualization, and Agent tools",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
@@ -35,7 +35,7 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node --test tests/client.test.mjs tests/host.test.mjs tests/runtime.test.mjs",
+    "test": "node --test tests/client.test.mjs tests/host.test.mjs tests/runtime.test.mjs tests/auto.test.mjs",
     "check": "npm run build && npm test"
   },
   "license": "MIT",
