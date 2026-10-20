@@ -17,4 +17,5 @@ const wrapped = [
 await mkdir(resolve(root, 'lib'), { recursive: true })
 await writeFile(resolve(root, 'lib/client.js'), wrapped)
 await copyFile(resolve(root, 'src/index.js'), resolve(root, 'lib/index.js'))
+await copyFile(resolve(root, 'src/runtime.js'), resolve(root, 'lib/runtime.js'))
 console.log(`Built DSH plugin ${id}`)
