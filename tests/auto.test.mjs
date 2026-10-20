@@ -229,3 +229,71 @@ test('turning off automatic indexing while building must retain paused status',a
     assert.equal(manager.activeProjects(),0)
   }finally{finish?.();manager.stop();await rm(base,{recursive:true,force:true})}
 })
+
+test('rapid edits are coalesced and automatic reindex respects cooldown',async()=>{
+  const base=await mkdtemp(join(tmpdir(),'dsh-gfy-cooldown-'))
+  const watch=fakeWatcher(),calls=[]
+  const manager=createAutoGraphManager({
+    run:makeRunner(calls),resolveProject:permitted(base),workspaceRoot:()=>base,
+    watchImpl:watch.watchImpl,debounceMs:25,minIntervalMs:260,
+  })
+  try {
+    await mkdir(join(base,'src'))
+    await writeFile(join(base,'src','app.ts'),'const a=1')
+    await manager.attach(session('cool',base))
+    await waitFor(()=>calls.length===1)
+    await wait(50)
+    watch.entries[0].emit('src/app.ts')
+    watch.entries[0].emit('src/app.ts')
+    watch.entries[0].emit('src/app.ts')
+    await wait(85)
+    assert.equal(calls.length,1,'no rebuild during cooldown, despite rapid duplicate events')
+    await waitFor(()=>calls.length===2,1500)
+    await wait(40)
+    await writeFile(join(base,'src','app.ts'),'const a=2')
+    watch.entries[0].emit('src/app.ts')
+    await wait(75)
+    assert.equal(calls.length,2,'changed content is queued for the following interval')
+    await waitFor(()=>calls.length===3,1500)
+  }finally{manager.stop();await rm(base,{recursive:true,force:true})}
+})
+
+test('updating Agent preference must not rebuild an already indexed graph',async()=>{
+  const base=await mkdtemp(join(tmpdir(),'dsh-gfy-agent-only-'))
+  const watch=fakeWatcher(),calls=[]
+  let settings={mode:'auto',agentUsage:'smart',scope:'sessions',allowlist:[],
+    debounceSeconds:20,minIntervalSeconds:180,excludePatterns:[]}
+  const manager=createAutoGraphManager({
+    run:makeRunner(calls),resolveProject:permitted(base),workspaceRoot:()=>base,
+    watchImpl:watch.watchImpl,getSettings:()=>settings,debounceMs:20,minIntervalMs:0,
+  })
+  try {
+    await manager.attach(session('agent',base))
+    await waitFor(()=>calls.length===1)
+    await wait(60)
+    settings={...settings,agentUsage:'off',debounceSeconds:40,minIntervalSeconds:360}
+    manager.refreshSettings()
+    await wait(80)
+    assert.equal(calls.length,1,'prompt and timing configuration must not retrigger scanning')
+    assert.equal(manager.activeProjects(),1)
+    assert.equal(watch.entries.length,1)
+  }finally{manager.stop();await rm(base,{recursive:true,force:true})}
+})
+
+test('recent completed graph skips rebuild after quickly reopening session',async()=>{
+  const base=await mkdtemp(join(tmpdir(),'dsh-gfy-reopen-'))
+  const watch=fakeWatcher(),calls=[]
+  const manager=createAutoGraphManager({
+    run:makeRunner(calls),resolveProject:permitted(base),workspaceRoot:()=>base,
+    watchImpl:watch.watchImpl,debounceMs:30,minIntervalMs:180000,
+  })
+  try {
+    await manager.attach(session('one',base))
+    await waitFor(()=>calls.length===1)
+    await wait(65)
+    manager.detach(session('one',base))
+    await manager.attach(session('two',base))
+    await wait(80)
+    assert.equal(calls.length,1,'opening an already-fresh graph should not scan it again')
+  }finally{manager.stop();await rm(base,{recursive:true,force:true})}
+})
