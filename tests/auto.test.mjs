@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, relative, resolve, isAbsolute } from 'node:path'
 import { tmpdir } from 'node:os'
-import { classifyChange, createAutoGraphManager } from '../src/auto.js'
+import { classifyChange, createAutoGraphManager, excluded, allowedProject } from '../src/auto.js'
 
 const wait = ms => new Promise(done => setTimeout(done, ms))
 async function waitFor(predicate, timeout = 3000) {
@@ -68,7 +68,8 @@ test('new session auto-builds locally; subsequent source saves debounce incremen
     await manager.attach(session('s1', base))
     await waitFor(() => calls.length === 1)
     await waitFor(async () => true)
-    assert.deepEqual(calls[0], ['extract', '.', '--code-only'])
+    assert.deepEqual(calls[0].slice(0,3), ['extract', '.', '--code-only'])
+    assert.ok(calls[0].includes('--exclude'))
     await waitFor(() => manager.activeProjects() === 1)
     await wait(50)
     const first = JSON.parse(await readFile(join(base, 'graphify-out', '.dsh-graphify-status.json'), 'utf8'))
@@ -78,7 +79,7 @@ test('new session auto-builds locally; subsequent source saves debounce incremen
     watch.entries[0].emit('src/b.ts')
     watch.entries[0].emit('src/c.ts')
     await waitFor(() => calls.length === 2)
-    assert.deepEqual(calls[1], ['update'])
+    assert.deepEqual(calls[1].slice(0,3), ['extract', '.', '--code-only'])
     await wait(80)
     assert.equal(calls.length, 2)
     watch.entries[0].emit('graphify-out/graph.json')
@@ -128,4 +129,48 @@ test('session outside local workspace is never indexed', async () => {
     assert.equal(calls.length, 0)
     assert.equal(watch.entries.length, 0)
   } finally { manager.stop(); await rm(base, { recursive: true, force: true }) }
+})
+
+test('settings whitelist and exclusions prevent unauthorized automatic scans', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'dsh-gfy-control-'))
+  const watch = fakeWatcher(), calls=[]
+  let setting={mode:'auto',scope:'allowlist',allowlist:[],debounceSeconds:1,excludePatterns:['private/','*.pem','.env*']}
+  const manager=createAutoGraphManager({run:makeRunner(calls),resolveProject:permitted(base),workspaceRoot:()=>base,
+    getSettings:()=>setting,watchImpl:watch.watchImpl,debounceMs:20})
+  try {
+    assert.equal(allowedProject(base,setting),false)
+    await manager.attach(session('x',base))
+    await wait(40)
+    assert.equal(calls.length,0)
+    setting={...setting,allowlist:[base]}
+    manager.refreshSettings()
+    await waitFor(()=>calls.length===1)
+    assert.ok(calls[0].includes('private/'))
+    assert.ok(calls[0].includes('*.pem'))
+    assert.equal(excluded('private/auth.ts',setting.excludePatterns),true)
+    assert.equal(classifyChange('src/key.pem',setting.excludePatterns),'ignore')
+    assert.equal(classifyChange('.env.production',setting.excludePatterns),'ignore')
+    assert.equal(classifyChange('src/module.ts',setting.excludePatterns),'code')
+    setting={...setting,mode:'manual'}
+    manager.refreshSettings()
+    await wait(50)
+    assert.equal(calls.length,1)
+    setting={...setting,mode:'off'}
+    manager.refreshSettings()
+    await wait(50)
+    assert.equal(calls.length,1)
+  } finally{manager.stop();await rm(base,{recursive:true,force:true})}
+})
+
+test('open-only mode creates one graph and never watches edits', async()=>{
+  const base=await mkdtemp(join(tmpdir(),'dsh-gfy-open-'))
+  const watch=fakeWatcher(),calls=[]
+  const manager=createAutoGraphManager({run:makeRunner(calls),resolveProject:permitted(base),
+    workspaceRoot:()=>base,getSettings:()=>({mode:'open',scope:'sessions',excludePatterns:[],debounceSeconds:3}),
+    watchImpl:watch.watchImpl,debounceMs:15})
+  try{
+    await manager.attach(session('x',base))
+    await waitFor(()=>calls.length===1)
+    assert.equal(watch.entries.length,0)
+  } finally{manager.stop();await rm(base,{recursive:true,force:true})}
 })
