@@ -2,7 +2,7 @@
 
 把 [Graphify](https://github.com/Graphify-Labs/graphify) 生成的代码知识图谱直接显示在 **DeepSeek Harness (DSH)** 的右侧工作区中，并让 DSH Agent 通过原生工具建立和查询图谱。
 
-> **状态：v0.4.0-beta.1 · 自动图谱预览版。** DSH Desktop 新建/打开本地项目会话时自动构建代码知识图谱，源文件变更后自动更新，右侧 Graphify 面板自动显示结果。仍需在实际 DSH Desktop 上完成联调；当前自动索引仅用于本地代码，不会自动调用大模型分析文档或媒体。
+> **状态：v0.5.0-beta.1 · Graphify 原版渲染器内嵌预览版。** 右侧 Graphify 面板直接读取项目生成的 graphify-out/graph.html，使用原版 vis-network 交互式物理布局、社区图例、搜索和节点详情，保留自动索引、配置、Agent 工具。已提供沙箱隔离及 CI 测试，真实 DSH Desktop 图形渲染仍待验证。
 
 ## 主要功能
 
@@ -42,7 +42,7 @@ dsh --profile desktop --dump-config
 
 > DSH Desktop 使用专门的 `desktop` Profile；请直接通过 **Desktop 自带的插件管理器** 安装。已安装旧版 GitHub 插件时，通过「已安装插件」卸载旧版、重新安装同一地址并重启即可更新。
 
-## v0.4.0-beta.1 修复说明
+## v0.5.0-beta.1 修复说明
 
 - 修复 DSH `workspaceFiles.readBytes` 返回 `RemoteResult` 时字段解包错误（此前会显示 `Unexpected end of JSON input`）。
 - 插件激活时从 `ctx.sessions.list()` 补接管已经恢复的本地项目会话；避免错过 `session/created`。
@@ -50,7 +50,17 @@ dsh --profile desktop --dump-config
 - 若从上一版更新，请使用 DSH Desktop 插件管理：卸载旧版、重新添加本仓库 URL 并重新启用，必要时重启 Desktop。
 - 尚未在真实 DSH Desktop 安装环境完成端到端验证；GitHub CI 只覆盖模拟接口和 Node 测试。
 
-## 原生设置面板（v0.4.0-beta.1）
+## 原版 Graphify 在 DSH 中查看（v0.5.0-beta.1）
+
+打开 DSH Desktop 项目会话 → 右侧 **Graphify**。插件直接读取 **当前会话目录的 graphify-out/graph.html**，而不是基于 JSON 手工仿制一张图。显示内容保留了上游 Graphify v8 的 vis-network 力导向物理布局、节点大小、社区图例、搜索、筛选、节点详情和 Light/Dark/System 主题控件。右侧顶部继续保留自动索引状态、刷新、⚙ 设置。
+
+原始 Graphify HTML 在单独 Blob iframe 中通过 sandbox="allow-scripts" 执行，不附加 allow-same-origin；附加限制性 CSP，阻断 connect-src、嵌套框架和表单，限制脚本来源为原版固定 SRI 的 vis-network 9.1.6 CDN 与页面自带脚本。只接受带原版固定渲染签名的 HTML，不对任意项目 HTML 启用脚本。
+
+**运行限制：** 上游 graph.html 使用 unpkg.com 上的 vis-network 9.1.6；首次显示需要能访问该域名。若 DSH Desktop 版本的宿主 CSP 进一步阻断 Blob iframe 或外部脚本，可能不能渲染，这需要实机检验并在下一阶段处理离线脚本资源。iframe 是独立、无特权的文档，无法直接访问 DSH 内部 API；Graphify 原版在无同源存储的隔离环境中，可能无法持久记住主题设置。
+
+生成项目图谱仍然由插件自动触发的 Graphify CLI 负责，只解析代码，不产生 AI Token。图谱文件按原版生成；如果原版未输出 graph.html，面板会提示等待或错误，不会静默退回自研 Canvas。
+
+## 原生设置面板（v0.5.0-beta.1）
 
 在 DSH Desktop 中打开项目 → 右侧 **Graphify → ⚙ 设置**。设置由 DSH 官方 `configForms` / Host 设置文档持久化，不依赖浏览器 LocalStorage。选择后点击 **保存设置**；Host 的 `loader/volatile-update` 事件会在不重启插件的情况下更新运行时规则。
 
@@ -86,9 +96,9 @@ dsh --profile desktop --dump-config
 
 ### 2. 在 DSH 内查看
 
-打开当前 DSH 会话 → 展开**右侧栏** → 进入指南/空白页 → 点击 **Graphify**。页面读取当前会话的 `graphify-out/graph.json`。可以搜索、拖动、缩放和追踪关系路径。
+打开当前 DSH 会话 → 展开**右侧栏** → 进入指南/空白页 → 点击 **Graphify**。页面读取当前会话的 `graphify-out/graph.html`，在沙箱中呈现 **Graphify 原版** 的网络、社区图例、节点详情、原生搜索和过滤。
 
-后台构建完成后图谱会自动刷新；也可点击 **Refresh** 重新读取文件。可视化当前只显示前 **800 节点 / 4500 关联**（防止大型图谱堵塞 UI），总数仍会显示；复杂大仓库建议进一步增加聚合或局部加载。
+后台构建完成后图谱会自动刷新；也可点击 **Refresh** 重新读取文件。原版 HTML 的大图谱性能和社区聚合行为以 Graphify 自己的导出规则为准，不再使用我们旧 Canvas 的 800 节点显示上限。
 
 ### 3. AI 图谱查询
 
@@ -102,6 +112,7 @@ Host 通过插件管理的 Graphify CLI 调用 `graphify query <question>`，返
 
 - Agent 工具只允许 `sandboxPolicy.workspaceRoot` 目录及其后代；解析 realpath 后验证路径，防止 `..` 或符号链接越界。工具使用 `spawn(shell:false)`，不执行拼接的 Shell 命令。
 - 使用 Graphify 的外部文档 / 图像语义抽取时，可能调用你配置的模型服务。源码 AST 解析无需上传模型。选择适当的 Graphify 模式并保护项目数据。
+- Graphify HTML iframe 内的脚本会通过浏览器从 unpkg.com 加载固定的 vis-network 版本，不会对上游代码或 Graphify 引擎授予 DSH Host 权限。
 - UI 从 DSH 已有 `workspaceFiles` Remote 读取文件，沿用 DSH 的文件访问策略与大小限制（默认完整文件 32 MiB）。
 - **当前版本不支持**：自动 LLM 语义分析、独立的面板内「强制重新构建」按钮、点击源码直接跳转、跨仓库混合图谱、大图聚合、Agent 主动定位图谱节点，以及与 DSH TUI 集成。自动更新只针对受允许的本地会话目录与代码文件；大项目扫描可能占用 CPU。
 - 插件不会在 DSH 启动时扫描所有磁盘；**进入本地项目会话会自动触发扫描**，首次扫描可能联网下载引擎；退出会话会关闭监听。
