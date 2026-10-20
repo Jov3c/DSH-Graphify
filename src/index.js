@@ -32,8 +32,8 @@ export function apply(ctx) {
     name: 'graphify_build',
     description: 'Build or update a Graphify knowledge graph in a permitted local project directory. First run downloads a verified isolated uv/Python/Graphify engine into plugin-managed cache; no separate user installation required. No shell command injection. After completion tell user to open/refresh the Graphify right sidebar tab.',
     parameters: {
-      directory: { type: 'string', required: false, description: 'Relative project directory under current DSH workspace root, or an absolute directory inside it. Defaults to policy workspace root.' },
-      update: { type: 'boolean', required: false, description: 'If true, use graphify update instead of a full rebuild.' },
+      directory: { type: 'string', description: 'Relative project directory under current DSH workspace root, or an absolute directory inside it. Defaults to policy workspace root.' },
+      update: { type: 'boolean', description: 'If true, use graphify update instead of a full rebuild.' },
     },
     output: output(),
     async execute(args) {
@@ -47,7 +47,7 @@ export function apply(ctx) {
     description: 'Query an existing local Graphify graph for code dependencies or concepts. Build the graph first if missing.',
     parameters: {
       question: { type: 'string', required: true, description: 'Question about the indexed project.' },
-      directory: { type: 'string', required: false, description: 'Project directory inside current DSH workspace root.' },
+      directory: { type: 'string', description: 'Project directory inside current DSH workspace root.' },
     },
     output: output(),
     async execute(args) {
