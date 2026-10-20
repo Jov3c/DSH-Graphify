@@ -17,41 +17,6 @@ function loadClient() {
   }, module, module.exports)
   return module.exports
 }
-const { normaliseGraph, layoutGraph, shortestPath } = loadClient().__test
-const fixture = {
-  directed: false,
-  nodes: [
-    { id: 'Auth', label: 'Auth', community: 1, source_file: 'auth.py' },
-    { id: 'Login', label: 'Login', community: 1 },
-    { id: 'DB', label: 'Database', community: 2 },
-    { id: 'Unused', label: 'Unused', community: 3 },
-  ],
-  links: [
-    { source: 'Auth', target: 'Login', relation: 'calls' },
-    { source: 'Login', target: 'DB', relation: 'uses' },
-    { source: 'DB', target: 'NOPE' },
-  ],
-}
-test('normalises node-link graph and drops unknown edges', () => {
-  const result = normaliseGraph(fixture)
-  assert.equal(result.nodes.length, 4)
-  assert.equal(result.links.length, 2)
-  assert.equal(result.nodes[0].source, 'auth.py')
-  assert.equal(result.nodes[0].community, '1')
-  assert.equal(result.totalLinks, 3)
-})
-test('shortest undirected path', () => {
-  const graph = normaliseGraph(fixture)
-  assert.equal(JSON.stringify(shortestPath(graph, 'Auth', 'DB')), JSON.stringify(['Auth','Login','DB']))
-  assert.equal(JSON.stringify(shortestPath(graph, 'Auth', 'Unused')), JSON.stringify([]))
-})
-test('layout is deterministic and finite', () => {
-  const graph = normaliseGraph(fixture)
-  const p = layoutGraph(graph)
-  assert.equal(p.size, 4)
-  for (const [, xy] of p) { assert.ok(Number.isFinite(xy.x)); assert.ok(Number.isFinite(xy.y)) }
-})
-test('broken graph is rejected', () => assert.throws(() => normaliseGraph({nodes: []}), /No nodes/))
 test('client exports apply + inject and uses official sidebar extension', async () => {
   const api = loadClient()
   assert.equal(typeof api.apply, 'function')
@@ -107,5 +72,6 @@ test('original Graphify HTML is embedded without replacing original force-direct
   assert.throws(()=>originalGraphDocument(html.replace('</head>', '<script src="https://evil.example/attack.js"></script></head>')), /unexpected external script/)
   const app = readFileSync(resolve(root,'src/client.js'),'utf8')
   assert.ok(app.includes("sandbox: 'allow-scripts'"))
+  assert.ok(!app.includes('function GraphCanvas'))
   assert.ok(!app.includes('allow-same-origin'))
 })
