@@ -1,7 +1,7 @@
 {
   "name": "@jov3c/dsh-graphify",
-  "version": "0.3.0-beta.2",
-  "description": "DSH Desktop-native automatic local code graph indexing, live visualization, and Agent tools",
+  "version": "0.4.0-beta.1",
+  "description": "DSH Desktop native code graph viewer with persistent auto-index policy settings",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
@@ -25,7 +25,8 @@
         "@deepseek-ai/dsh-client-ui-sidebar-right",
         "@deepseek-ai/dsh-api-workspace-files",
         "@deepseek-ai/dsh-api-remotes",
-        "@deepseek-ai/dsh-client-ui-renderer"
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-settings"
       ]
     }
   },
@@ -35,7 +36,7 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node --test tests/client.test.mjs tests/host.test.mjs tests/runtime.test.mjs tests/auto.test.mjs",
+    "test": "node --test tests/client.test.mjs tests/host.test.mjs tests/runtime.test.mjs tests/auto.test.mjs tests/settings.test.mjs",
     "check": "npm run build && npm test"
   },
   "license": "MIT",
@@ -44,6 +45,7 @@
     "url": "git+https://github.com/Jov3c/DSH-Graphify.git"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-tools": ">=0.2.0-rc.1 <0.3.0"
+    "@deepseek-ai/dsh-tools": ">=0.2.0-rc.1 <0.3.0",
+    "@deepseek-ai/schemastery": "^3.18.0"
   }
 }
