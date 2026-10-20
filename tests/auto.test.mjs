@@ -52,6 +52,8 @@ test('change classifier ignores generated output and dependencies', () => {
   assert.equal(classifyChange('node_modules/foo.ts'), 'ignore')
   assert.equal(classifyChange('.git/HEAD'), 'ignore')
   assert.equal(classifyChange('src/hello.ts'), 'code')
+  assert.equal(classifyChange('.graphifyignore'), 'code')
+  assert.equal(classifyChange('.gitignore'), 'code')
   assert.equal(classifyChange('README.md'), 'document')
   assert.equal(classifyChange('src'), 'code')
   assert.equal(classifyChange(undefined), 'code')
@@ -74,6 +76,8 @@ test('new session auto-builds locally; subsequent source saves debounce incremen
     await wait(50)
     const first = JSON.parse(await readFile(join(base, 'graphify-out', '.dsh-graphify-status.json'), 'utf8'))
     assert.equal(first.state, 'ready')
+    assert.equal(first.htmlAvailable, false)
+    assert.match(first.detail, /graph.html/)
     assert.equal(first.watching, true)
     watch.entries[0].emit('src/a.ts')
     watch.entries[0].emit('src/b.ts')
@@ -173,4 +177,55 @@ test('open-only mode creates one graph and never watches edits', async()=>{
     await waitFor(()=>calls.length===1)
     assert.equal(watch.entries.length,0)
   } finally{manager.stop();await rm(base,{recursive:true,force:true})}
+})
+
+test('ready state reports original HTML availability separately from graph data', async () => {
+  const base = await mkdtemp(join(tmpdir(),'dsh-gfy-html-'))
+  const watcher=fakeWatcher()
+  const manager=createAutoGraphManager({
+    run: async(_args,root)=>{
+      await mkdir(join(root,'graphify-out'),{recursive:true})
+      await writeFile(join(root,'graphify-out','graph.json'),'{"nodes":[{"id":"x"}],"links":[]}')
+      await writeFile(join(root,'graphify-out','graph.html'),'<html></html>')
+    },
+    resolveProject:permitted(base),workspaceRoot:()=>base,watchImpl:watcher.watchImpl,
+  })
+  try {
+    await manager.attach(session('html',base))
+    await waitFor(()=>manager.activeProjects()===1)
+    await wait(90)
+    const status=JSON.parse(await readFile(join(base,'graphify-out','.dsh-graphify-status.json'),'utf8'))
+    assert.equal(status.state,'ready')
+    assert.equal(status.htmlAvailable,true)
+  }finally{manager.stop();await rm(base,{recursive:true,force:true})}
+})
+
+test('turning off automatic indexing while building must retain paused status',async()=>{
+  const base=await mkdtemp(join(tmpdir(),'dsh-gfy-pause-'))
+  const watcher=fakeWatcher()
+  let finish, entered
+  const started=new Promise(resolve=>{entered=resolve})
+  const pending=new Promise(resolve=>{finish=resolve})
+  let mode='auto'
+  const manager=createAutoGraphManager({
+    run:async(_args,root)=>{
+      await mkdir(join(root,'graphify-out'),{recursive:true})
+      entered()
+      await pending
+      await writeFile(join(root,'graphify-out','graph.json'),'{"nodes":[{"id":"x"}],"links":[]}')
+    },
+    resolveProject:permitted(base),workspaceRoot:()=>base,watchImpl:watcher.watchImpl,
+    getSettings:()=>({mode,scope:'sessions',allowlist:[],debounceSeconds:1,excludePatterns:[]})
+  })
+  try {
+    await manager.attach(session('pause',base))
+    await started
+    mode='off'
+    manager.refreshSettings()
+    finish()
+    await wait(100)
+    const status=JSON.parse(await readFile(join(base,'graphify-out','.dsh-graphify-status.json'),'utf8'))
+    assert.equal(status.state,'paused')
+    assert.equal(manager.activeProjects(),0)
+  }finally{finish?.();manager.stop();await rm(base,{recursive:true,force:true})}
 })
