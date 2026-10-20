@@ -2,13 +2,30 @@
 
 把 [Graphify](https://github.com/Graphify-Labs/graphify) 生成的代码知识图谱直接显示在 **DeepSeek Harness (DSH)** 的右侧工作区中，并让 DSH Agent 通过原生工具建立和查询图谱。
 
-> **状态：v0.6.0-beta.1 · Graphify 原版渲染器内嵌预览版。** 右侧 Graphify 面板直接读取项目生成的 graphify-out/graph.html，使用原版 vis-network 交互式物理布局、社区图例、搜索和节点详情，保留自动索引、配置、Agent 工具。已提供沙箱隔离及 CI 测试，真实 DSH Desktop 图形渲染仍待验证。
+> **状态：v0.7.0-beta.1 · Graphify 原版渲染器内嵌预览版。** 右侧 Graphify 面板直接读取项目生成的 graphify-out/graph.html，使用原版 vis-network 交互式物理布局、社区图例、搜索和节点详情，保留自动索引、配置、Agent 工具。已提供沙箱隔离及 CI 测试，真实 DSH Desktop 图形渲染仍待验证。
+
+## 自然语言自动使用图谱（v0.7.0-beta.1）
+
+**不需要记住或输入工具名称。** 在本地项目会话里，用户直接说“分析项目架构”“登录模块有什么依赖”“修改用户模型会影响哪些地方”等，DSH Agent 就会收到插件注册的、面向当前项目的工具使用指导，根据问题尝试选择已有的 Graphify 图谱工具。它通过 DSH 官方 `systemPrompt.section()` 注入动态系统提示，不改写工作区的 `AGENTS.md`，不会擅自写入 Hook/Skill，也不影响普通非项目对话。
+
+使用策略位于右侧 **Graphify → ⚙ 设置 → Agent 自然语言图谱使用策略**：
+
+| 策略 | 默认 | 使用方式 |
+| --- | --- | --- |
+| 智能使用 | ✅ | 项目架构、依赖、调用链、改动影响等问题优先使用已有图谱；普通聊天不强制调用 |
+| 仅明确要求 | | 用户明确说“用图谱”“用 Graphify”时才建议调用图谱工具，仍可用普通自然语言 |
+| 关闭主动使用 | | 不向模型注入 Graphify 优先指导，手动点名 Graphify 工具仍可使用 |
+
+**与自动扫描设置的区别**：Agent 使用策略控制“会不会主动考虑图谱”；扫描模式控制“后台何时自动建立、更新图谱”。如果项目没有 `graph.json`，Agent 只会在自动索引已允许、适合当前任务且没有后台构建时考虑建图；“手动/关闭”扫描模式下，不会根据普通项目提问主动启动构建。图谱结果仍需结合源码验证，不能代替真实代码审查。
+
+**能力边界**：以上是 DSH 官方系统提示与原生工具接口的集成，工具最终是否被调用由当前模型、模型工具权限和会话环境共同决定；不是一个拦截所有用户消息的强制工具路由器。此版本未做真实 Desktop GUI 端到端验收。
 
 ## 核心功能
 
 - **Graphify 原版可视化**：DSH 右侧原生标签页加载 `graphify-out/graph.html`，直接使用上游 vis-network 力导向布局、社区筛选、节点搜索与点击详情；在隔离的 iframe 中运行，并非插件自绘的简化 Canvas。
 - **本地代码图谱**：项目会话创建或打开时自动执行官方 `graphify extract . --code-only`。基础索引不调用大模型、不产生 AI 语义抽取费用。
 - **增量更新与控制**：监听源代码保存并防抖更新；设置面板支持自动/仅打开/手动/关闭、工作区白名单、扫描排除规则和 1–15 秒防抖，保存到 DSH Host 配置。
+- **自然语言 Agent 工具选择**：通过 DSH 官方系统提示机制，按项目会话动态注入图谱优先指导；可选择智能使用、仅明确要求或关闭主动使用。
 - **五个 Agent 工具**：`graphify_build`（安全代码构建）、`graphify_query`（自然语言局部查询）、`graphify_path`（双节点路径）、`graphify_explain`（节点关系解释）、`graphify_affected`（修改影响分析）。
 - **可靠性提示**：图谱输出状态区分 `graph.json` 和 `graph.html`；部分很小的图谱可能没有可用的 HTML，可在状态栏查看原因。
 - **引擎自动准备**：首次使用会下载校验后的 uv、独立 Python 和 Graphify，之后复用缓存。不修改系统 Python 或 PATH。
@@ -38,7 +55,7 @@ dsh --profile desktop --dump-config
 
 > DSH Desktop 使用专门的 `desktop` Profile；请直接通过 **Desktop 自带的插件管理器** 安装。已安装旧版 GitHub 插件时，通过「已安装插件」卸载旧版、重新安装同一地址并重启即可更新。
 
-## v0.6.0-beta.1 更新内容
+## v0.7.0-beta.1 更新内容（包含 v0.6 的功能）
 
 - 新增官方 Graphify CLI 的 `path`、`explain`、`affected` 对应 DSH Agent 工具；加上 `build`、`query`，合计五项工具。Agent 能主动选择适当的图谱查询，但尚未接入“每次自动查询”策略或 Agent 与图谱节点双向联动。
 - `graphify_build` 默认行为修正为 `extract . --code-only`，同时应用设置的扫描排除规则；不会因项目已有 API Key 自动进入付费语义提取。
@@ -47,7 +64,7 @@ dsh --profile desktop --dump-config
 - 删除旧自绘 Canvas 和对应测试；图谱页面只呈现原版 Graphify HTML。
 - Windows/Linux 自动化测试作为验收；**真实 DSH Desktop 原版图谱交互、设置持久化和权限行为仍需本机实测**。
 
-## 原版 Graphify 在 DSH 中查看（v0.6.0-beta.1）
+## 原版 Graphify 在 DSH 中查看（v0.7.0-beta.1）
 
 打开 DSH Desktop 项目会话 → 右侧 **Graphify**。插件直接读取 **当前会话目录的 graphify-out/graph.html**，而不是基于 JSON 手工仿制一张图。显示内容保留了上游 Graphify v8 的 vis-network 力导向物理布局、节点大小、社区图例、搜索、筛选、节点详情和 Light/Dark/System 主题控件。右侧顶部继续保留自动索引状态、刷新、⚙ 设置。
 
@@ -57,13 +74,14 @@ dsh --profile desktop --dump-config
 
 生成项目图谱仍然由插件自动触发的 Graphify CLI 负责，只解析代码，不产生 AI Token。图谱文件按原版生成；如果原版未输出 graph.html，面板会提示等待或错误，不会静默退回自研 Canvas。
 
-## 原生设置面板（v0.6.0-beta.1）
+## 原生设置面板（v0.7.0-beta.1）
 
 在 DSH Desktop 中打开项目 → 右侧 **Graphify → ⚙ 设置**。设置由 DSH 官方 `configForms` / Host 设置文档持久化，不依赖浏览器 LocalStorage。选择后点击 **保存设置**；Host 的 `loader/volatile-update` 事件会在不重启插件的情况下更新运行时规则。
 
 | 选项 | 默认 | 行为 |
 | --- | --- | --- |
 | 自动触发 | 自动 | 项目会话创建时构建；本地源码保存后 3 秒防抖增量分析 |
+| Agent 图谱使用策略 | 智能使用 | 基于当前项目和图谱状态提示 Agent 用自然语言智能选用 Graphify 工具；可选仅明确要求或关闭主动使用 |
 | 轻量模式 | - | 仅在项目会话打开时刷新，不持续监听文件 |
 | 手动模式 | - | 不自动扫描；用户明确让 Agent 使用 `graphify_build` 时仍可执行 |
 | 关闭模式 | - | 不调度任何后台分析；Agent 工具仍可独立使用 |
