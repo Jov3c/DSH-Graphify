@@ -2,7 +2,15 @@
 
 把 [Graphify](https://github.com/Graphify-Labs/graphify) 生成的代码知识图谱直接显示在 **DeepSeek Harness (DSH)** 的右侧工作区中，并让 DSH Agent 通过原生工具建立和查询图谱。
 
-> **状态：v0.8.0-beta.1 · Graphify 原版渲染器内嵌预览版。** 右侧 Graphify 面板直接读取项目生成的 graphify-out/graph.html，使用原版 vis-network 交互式物理布局、社区图例、搜索和节点详情，保留自动索引、配置、Agent 工具。已提供沙箱隔离及 CI 测试，真实 DSH Desktop 图形渲染仍待验证。
+> **状态：v0.8.1-beta.1 · Graphify 原版渲染器内嵌预览版，默认跟随系统亮暗主题。** 右侧 Graphify 面板直接读取项目生成的 graphify-out/graph.html，使用原版 vis-network 交互式物理布局、社区图例、搜索和节点详情，保留自动索引、配置、Agent 工具。已提供沙箱隔离及 CI 测试，真实 DSH Desktop 图形渲染仍待验证。
+
+## v0.8.1-beta.1：Graphify 默认跟随系统主题
+
+- **不再默认显示黑色图谱**：嵌入的上游 Graphify HTML 默认以 `System` 模式初始化。系统浅色时显示浅色图谱；系统深色时显示原版深色图谱。
+- **跟随系统变化**：保留上游 `matchMedia('(prefers-color-scheme: light)')` 监听，系统亮暗切换时即时调整原版图谱颜色，不重新加载 iframe，不丢失缩放、位置、筛选状态。
+- **兼容 DSH 沙箱**：DSH 的 `sandbox="allow-scripts"` 为 HTML 分配隔离来源，原版 `localStorage` 通常被禁止。新增内存中的主题偏好回退，避免原版无存储时总是退回 Dark；原版 Light/Dark/System 手动选择仍有效。
+- **避免黑色闪屏**：删除 Graphify iframe 外层写死的深色背景，改为透明背景。
+- **兼容性**：只修改已经识别的上游 v8 主题脚本。若未来 Graphify HTML 主题实现不匹配，显示明确错误，不静默恢复强制暗色。Windows/Linux CI 检查代码与主题逻辑，实际 DSH Desktop 系统外观跟随仍需用户本机验收。
 
 ## v0.8.0-beta.1：提高自然语言自动调用率，增强影响分析完整性
 
@@ -90,7 +98,7 @@ dsh --profile desktop --dump-config
 
 ## 原版 Graphify 在 DSH 中查看（v0.7.0-beta.1）
 
-打开 DSH Desktop 项目会话 → 右侧 **Graphify**。插件直接读取 **当前会话目录的 graphify-out/graph.html**，而不是基于 JSON 手工仿制一张图。显示内容保留了上游 Graphify v8 的 vis-network 力导向物理布局、节点大小、社区图例、搜索、筛选、节点详情和 Light/Dark/System 主题控件。右侧顶部继续保留自动索引状态、刷新、⚙ 设置。
+打开 DSH Desktop 项目会话 → 右侧 **Graphify**。插件直接读取 **当前会话目录的 graphify-out/graph.html**，而不是基于 JSON 手工仿制一张图。显示内容保留了上游 Graphify v8 的 vis-network 力导向物理布局、节点大小、社区图例、搜索、筛选、节点详情和 Light/Dark/System 主题控件；默认选择 System，不强制黑色图谱。右侧顶部继续保留自动索引状态、刷新、⚙ 设置。
 
 原始 Graphify HTML 在单独 Blob iframe 中通过 sandbox="allow-scripts" 执行，不附加 allow-same-origin；附加限制性 CSP，阻断 connect-src、嵌套框架和表单，限制脚本来源为原版固定 SRI 的 vis-network 9.1.6 CDN 与页面自带脚本。只接受带原版固定渲染签名的 HTML，不对任意项目 HTML 启用脚本。
 
