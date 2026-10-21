@@ -6,13 +6,13 @@
 
 ## v0.9.0-beta.1：扩展原版开源能力（第一批）
 
-> **迁移状态必须以 [MIGRATION.md](./MIGRATION.md) 为准。** 这是开源能力全量集成过程中的 Beta 阶段，**并非所有原版开源功能都已移植完成**。
+> **迁移状态必须以 [MIGRATION.md](./MIGRATION.md) 为准。MCP 手动配置见 [MCP_SETUP.md](./MCP_SETUP.md)。** 这是开源能力全量集成过程中的 Beta 阶段，**并非所有原版开源功能都已移植完成**。
 
 - **原版多视图**：右侧 Graphify 面板新增「关系网络 / 树状图 / 调用流程」切换。树状图先通过 `graphify_view(tree)` 生成 `graphify-out/GRAPH_TREE.html`，调用流程先通过 `graphify_view(callflow)` 生成 `graphify-out/GRAPH_CALLFLOW.html`；直接读取原版 HTML，隔离沙箱执行并限制脚本来源。
 - **图谱诊断**：新增 `graphify_health`，可以查看图谱规模、孤立节点、端点缺失，以及官方 `diagnose multigraph`；不把“已索引文件数”冒充真正的源码覆盖率。
 - **更多开源命令接入**：Wiki、Obsidian、GraphML、原版 HTML 导出；查询结果记忆和反思；Git Hook 状态/显式安装；原版 PR 查询、冲突及可选分诊；图谱合并、全局图谱注册、社区重聚类、URL/论文导入、显式 GitHub 克隆。
 - **高级权限默认关闭**：Graphify 设置中新增「允许高级本地操作」「允许联网／AI 操作」。常规自动扫描仍只有本地代码 AST；敏感操作被明确拒绝，直到用户在 DSH 设置里主动授权。
-- **语义分析单独授权**：`graphify_semantic` 支持已配置后端与 Token 预算，但必须先在设置中开启两项权限。某些后端与媒体功能需要安装原版可选 Python 依赖，当前 Beta **尚未自动处理所有 extras**。
+- **语义分析单独授权**：`graphify_semantic` 支持已配置后端与 Token 预算，但必须先在设置中开启两项权限。某些后端与媒体功能需要安装原版可选 Python 依赖；已新增 `graphify_dependencies` 供显式授权后选择官方 extras，**没有在 Desktop 上完成全部后端/格式的实际运行验证**。
 - **已知未完成**：Graphify MCP 的生命周期与连接、数据库推送、可选语言/媒体依赖一键管理、完整桌面端 PR 管理和部分平台 Guard 等；全部列在 [MIGRATION.md](./MIGRATION.md)。此外，当前固定引擎为 0.9.92，尚未在真实 DSH Desktop 上完成全命令验收。
 
 ## v0.8.1-beta.1：Graphify 默认跟随系统主题
