@@ -118,6 +118,40 @@ function GraphSettings({ form, close }) {
  * restrictive CSP meta tag. It runs in an opaque-origin sandboxed Blob iframe.
  * In particular: never eval project HTML in the DSH/React page itself.
  */
+/**
+ * Upstream Graphify v8 defaults to dark when storage is unavailable.
+ * Our iframe is intentionally opaque-origin (sandbox=allow-scripts), so
+ * localStorage is denied. Preserve upstream UI/scripts but choose System as
+ * the default and remember manual theme choices in iframe memory.
+ * The original matchMedia listener reacts to OS theme changes in System mode.
+ */
+function systemDefaultGraphTheme(source) {
+  const initPattern=/(<script\s+id=["']graphify-theme-init["'][^>]*>)([\s\S]*?)(<\/script>)/i
+  const match=source.match(initPattern)
+  if(!match)throw Error('Graphify theme initializer not found; regenerate graph.html with the supported Graphify version.')
+  let init=match[2]
+  const prefix="var pref = null;"
+  const storage="pref = localStorage.getItem('graphify-theme');"
+  if(!init.includes(prefix)||!init.includes(storage))throw Error('Unsupported Graphify theme initializer')
+  init=init.replace(prefix,"var pref = 'system';")
+    .replace(storage,"pref = localStorage.getItem('graphify-theme') || 'system';")
+  let result=source.replace(initPattern,(_all,start,_body,end)=>start+init+end)
+
+  const themePrefSignature="function themePref() {"
+  const returnSignature="return (p === 'light' || p === 'dark' || p === 'system') ? p : null;"
+  const clickSignature="const pref = b.dataset.themeChoice;"
+  if(!result.includes(themePrefSignature)||!result.includes(returnSignature)||!result.includes(clickSignature)) {
+    throw Error('Unsupported Graphify theme selector; cannot guarantee system default')
+  }
+  result=result.replace(themePrefSignature,
+    "let transientThemePreference = 'system';\n"+themePrefSignature)
+    .replace(returnSignature,
+      "return (p === 'light' || p === 'dark' || p === 'system') ? p : transientThemePreference;")
+    .replace(clickSignature,
+      clickSignature+"\n    transientThemePreference = pref;")
+  return result
+}
+
 function originalGraphDocument(html) {
   if (typeof html !== 'string' || html.length > 32 * 1024 * 1024) throw Error('Invalid or oversized Graphify HTML.')
   const required = [
@@ -136,7 +170,7 @@ function originalGraphDocument(html) {
   }
   const csp = "default-src 'none'; script-src 'unsafe-inline' https://unpkg.com; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'"
   if (!/<head(?:\s[^>]*)?>/i.test(html)) throw Error('Graphify HTML is missing its document head.')
-  return html.replace(/<head(?:\s[^>]*)?>/i, match =>
+  return systemDefaultGraphTheme(html).replace(/<head(?:\s[^>]*)?>/i, match =>
     match + '\n<meta http-equiv="Content-Security-Policy" content="' + csp + '">'
   )
 }
@@ -189,7 +223,7 @@ function OriginalGraphPreview({ loadHtml, revision, enabled, onLoadError, onLoad
       sandbox: 'allow-scripts',
       referrerPolicy: 'no-referrer',
       src: frameUrl,
-      style: { width: '100%', height: '100%', minHeight: 320, flex: 1, border: '1px solid #8490a035', borderRadius: 9, background: '#10151c' },
+      style: { width: '100%', height: '100%', minHeight: 320, flex: 1, border: '1px solid #8490a035', borderRadius: 9, background: 'transparent' },
     }) : null,
     frameUrl ? h('div', { style: { opacity: .6, fontSize: 10, paddingTop: 4 } },
       'Original Graphify · vis-network 9.1.6 · isolated iframe · vis library loads from unpkg.com.'
@@ -298,4 +332,4 @@ exports.apply = function apply(ctx) {
     }),
   }, GraphPanel)), 'dsh-graphify:tab-body')
 }
-exports.__test = { originalGraphDocument, graphRefreshAction }
+exports.__test = { originalGraphDocument, systemDefaultGraphTheme, graphRefreshAction }
