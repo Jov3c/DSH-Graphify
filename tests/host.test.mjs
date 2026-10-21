@@ -14,6 +14,7 @@ const stub = source.replace("import { defineTool } from '@deepseek-ai/dsh-tools'
   .replace("import { readSettings } from './settings.js'", "const readSettings = () => ({mode: 'auto', agentUsage:'smart', scope: 'sessions',allowlist:[],debounceSeconds:3,excludePatterns:[]})")
   .replace("import { graphifyAgentGuidance } from './agent-guidance.js'", "const graphifyAgentGuidance = context => 'Graphify assistant guidance for '+context.session.id")
   .replace("import { readImpactContext } from './impact-context.js'", "const readImpactContext = async () => 'Supplemental code graph audit test'")
+  .replace("import { extraToolDescriptors } from './capabilities.js'", "const extraToolDescriptors = () => []")
   .replace("export { Config } from './settings.js'", "export const Config = {}")
 const host = await import('data:text/javascript,' + encodeURIComponent(stub))
 const guidanceSections=[]
