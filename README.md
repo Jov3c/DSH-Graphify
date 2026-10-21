@@ -2,7 +2,18 @@
 
 把 [Graphify](https://github.com/Graphify-Labs/graphify) 生成的代码知识图谱直接显示在 **DeepSeek Harness (DSH)** 的右侧工作区中，并让 DSH Agent 通过原生工具建立和查询图谱。
 
-> **状态：v0.8.1-beta.1 · Graphify 原版渲染器内嵌预览版，默认跟随系统亮暗主题。** 右侧 Graphify 面板直接读取项目生成的 graphify-out/graph.html，使用原版 vis-network 交互式物理布局、社区图例、搜索和节点详情，保留自动索引、配置、Agent 工具。已提供沙箱隔离及 CI 测试，真实 DSH Desktop 图形渲染仍待验证。
+> **状态：v0.9.0-beta.1 · Graphify 原版渲染器内嵌预览版，默认跟随系统亮暗主题。** 右侧 Graphify 面板直接读取项目生成的 graphify-out/graph.html，使用原版 vis-network 交互式物理布局、社区图例、搜索和节点详情，保留自动索引、配置、Agent 工具。已提供沙箱隔离及 CI 测试，真实 DSH Desktop 图形渲染仍待验证。
+
+## v0.9.0-beta.1：扩展原版开源能力（第一批）
+
+> **迁移状态必须以 [MIGRATION.md](./MIGRATION.md) 为准。** 这是开源能力全量集成过程中的 Beta 阶段，**并非所有原版开源功能都已移植完成**。
+
+- **原版多视图**：右侧 Graphify 面板新增「关系网络 / 树状图 / 调用流程」切换。树状图先通过 `graphify_view(tree)` 生成 `graphify-out/GRAPH_TREE.html`，调用流程先通过 `graphify_view(callflow)` 生成 `graphify-out/GRAPH_CALLFLOW.html`；直接读取原版 HTML，隔离沙箱执行并限制脚本来源。
+- **图谱诊断**：新增 `graphify_health`，可以查看图谱规模、孤立节点、端点缺失，以及官方 `diagnose multigraph`；不把“已索引文件数”冒充真正的源码覆盖率。
+- **更多开源命令接入**：Wiki、Obsidian、GraphML、原版 HTML 导出；查询结果记忆和反思；Git Hook 状态/显式安装；原版 PR 查询、冲突及可选分诊；图谱合并、全局图谱注册、社区重聚类、URL/论文导入、显式 GitHub 克隆。
+- **高级权限默认关闭**：Graphify 设置中新增「允许高级本地操作」「允许联网／AI 操作」。常规自动扫描仍只有本地代码 AST；敏感操作被明确拒绝，直到用户在 DSH 设置里主动授权。
+- **语义分析单独授权**：`graphify_semantic` 支持已配置后端与 Token 预算，但必须先在设置中开启两项权限。某些后端与媒体功能需要安装原版可选 Python 依赖，当前 Beta **尚未自动处理所有 extras**。
+- **已知未完成**：Graphify MCP 的生命周期与连接、数据库推送、可选语言/媒体依赖一键管理、完整桌面端 PR 管理和部分平台 Guard 等；全部列在 [MIGRATION.md](./MIGRATION.md)。此外，当前固定引擎为 0.9.92，尚未在真实 DSH Desktop 上完成全命令验收。
 
 ## v0.8.1-beta.1：Graphify 默认跟随系统主题
 
@@ -58,7 +69,7 @@
 - **本地代码图谱**：项目会话创建或打开时检查图谱状态；新项目立即执行官方 `graphify extract . --code-only`，已有近期更新的图谱不会重复索引。基础索引不调用大模型、不产生 AI 语义抽取费用。
 - **增量更新与控制**：监听源代码保存并防抖更新；设置面板支持自动/仅打开/手动/关闭、工作区白名单、扫描排除规则和 5–120 秒防抖和 30–900 秒构建冷却，保存到 DSH Host 配置。
 - **自然语言 Agent 工具选择**：通过 DSH 官方系统提示机制，按项目会话动态注入图谱优先指导；可选择智能使用、仅明确要求或关闭主动使用。
-- **五个 Agent 工具**：`graphify_build`（安全代码构建）、`graphify_query`（自然语言局部查询）、`graphify_path`（双节点路径）、`graphify_explain`（节点关系解释）、`graphify_affected`（修改影响分析）。
+- **Agent 图谱工具**：`graphify_build`（安全代码构建）、`graphify_query`（自然语言局部查询）、`graphify_path`（双节点路径）、`graphify_explain`（节点关系解释）、`graphify_affected`（修改影响分析）。
 - **可靠性提示**：图谱输出状态区分 `graph.json` 和 `graph.html`；部分很小的图谱可能没有可用的 HTML，可在状态栏查看原因。
 - **引擎自动准备**：首次使用会下载校验后的 uv、独立 Python 和 Graphify，之后复用缓存。不修改系统 Python 或 PATH。
 - **会话与扫描范围隔离**：索引目录必须属于 DSH 会话策略允许的本地项目，不会自动扫描其他磁盘、其他工作区或跨仓库图谱。
