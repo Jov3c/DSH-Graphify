@@ -62,9 +62,39 @@ test('prebuilt client is self-registering DSH factory', () => {
 
 test('original Graphify HTML is embedded without replacing original force-directed renderer', () => {
   const { originalGraphDocument } = loadClient().__test
-  const html = '<!DOCTYPE html><html><head><script src="https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js" integrity="sha384-Ux6phic9PEHJ38YtrijhkzyJ8yQlH8i/+buBR8s3mAZOJrP1gwyvAcIYl3GWtpX1"></script></head><body><div id="graph"></div><div id="sidebar"></div><script>const network = new vis.Network(1,2,3)</script></body></html>'
+  const html = [
+    '<!DOCTYPE html><html><head>',
+    '<script src="https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js" integrity="sha384-Ux6phic9PEHJ38YtrijhkzyJ8yQlH8i/+buBR8s3mAZOJrP1gwyvAcIYl3GWtpX1"></script>',
+    '<script id="graphify-theme-init">(function () { var pref = null; try { pref = localStorage.getItem(\'graphify-theme\'); } catch (e) {} var t = pref === \'light\' ? \'light\' : pref === \'system\' && window.matchMedia && window.matchMedia(\'(prefers-color-scheme: light)\').matches ? \'light\' : \'dark\'; document.documentElement.setAttribute(\'data-theme\',t); })();</script>',
+    '</head><body><div id="graph"></div><div id="sidebar"></div>',
+    '<script>const THEME_KEY = \'graphify-theme\'; function themePref() { let p = null; try { p = localStorage.getItem(THEME_KEY); } catch (e) {} return (p === \'light\' || p === \'dark\' || p === \'system\') ? p : null; } document.querySelectorAll(\'[data-theme-choice]\').forEach(b => { b.addEventListener(\'click\', () => { const pref = b.dataset.themeChoice; applyTheme(pref); }); }); const network = new vis.Network(1,2,3)</script>',
+    '</body></html>',
+  ].join('')
   const result=originalGraphDocument(html)
   assert.ok(result.includes('new vis.Network(1,2,3)'))
+  assert.ok(result.includes("var pref = 'system';"))
+  assert.ok(result.includes("|| 'system'"))
+  assert.ok(result.includes("transientThemePreference = 'system'"))
+  assert.ok(result.includes("transientThemePreference = pref"))
+  assert.ok(result.includes("? p : transientThemePreference;"))
+  const init=result.match(/<script id="graphify-theme-init">([\s\S]*?)<\/script>/)[1]
+  for(const [osLight, expected] of [[true,'light'],[false,'dark']]) {
+    let chosen = null
+    vm.runInNewContext(init, {
+      window:{ matchMedia:()=>({matches:osLight}) },
+      localStorage:{ getItem(){throw Error('opaque sandbox storage denied')} },
+      document:{ documentElement:{ setAttribute(_key,value){chosen=value} } },
+    })
+    assert.equal(chosen, expected, 'initial Graphify appearance should match the operating system')
+  }
+  let chosen = null
+  vm.runInNewContext(init, {
+    window:{matchMedia:()=>({matches:false})},
+    localStorage:{getItem(){return 'light'}},
+    document:{ documentElement:{ setAttribute(_key,value){chosen=value} } },
+  })
+  assert.equal(chosen,'light','supported manual theme preference should still override system')
+
   assert.ok(result.includes('<meta http-equiv="Content-Security-Policy"'))
   assert.ok(result.includes("connect-src 'none'"))
   assert.ok(result.includes('https://unpkg.com/vis-network@9.1.6'))
@@ -74,6 +104,7 @@ test('original Graphify HTML is embedded without replacing original force-direct
   assert.ok(app.includes("sandbox: 'allow-scripts'"))
   assert.ok(!app.includes('function GraphCanvas'))
   assert.ok(!app.includes('allow-same-origin'))
+  assert.ok(app.includes("background: 'transparent'"), 'do not force black loading background')
 })
 
 test('background revisions never replace a viewed graph until user explicitly refreshes',()=>{
