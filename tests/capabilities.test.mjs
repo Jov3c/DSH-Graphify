@@ -128,3 +128,20 @@ test('GitHub PR requests require remote authorization, while local inspection re
   await assert.rejects(s.find('graphify_global').execute({action:'remove',tag:'x'}),/Enable Advanced/)
  }finally{await rm(root,{recursive:true,force:true})}
 })
+
+test('optional dependency preparation requires opt-in and passes only typed extras',async()=>{
+ const root=await setup()
+ try{
+  let installCount=0,received=null
+  const project=async()=>root
+  const installer=async extras=>{installCount++;received=extras;return 'Extras installed'}
+  const run=async()=>'ok'
+  const disabled=extraToolDescriptors({project,run,installExtras:installer,settings:()=>({advancedActions:false,networkActions:false})})
+  await assert.rejects(disabled.find(t=>t.name==='graphify_dependencies').execute({extras:['mcp']}),/Enable Advanced/)
+  assert.equal(installCount,0)
+  const enabled=extraToolDescriptors({project,run,installExtras:installer,settings:()=>({advancedActions:true,networkActions:true})})
+  assert.equal(await enabled.find(t=>t.name==='graphify_dependencies').execute({extras:['mcp','pdf']}),'Extras installed')
+  assert.deepEqual(received,['mcp','pdf'])
+  assert.equal(installCount,1)
+ }finally{await rm(root,{recursive:true,force:true})}
+})
