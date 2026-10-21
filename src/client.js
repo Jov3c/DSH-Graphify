@@ -11,6 +11,8 @@ const FIELD = { color: 'inherit', minWidth: 0, border: '1px solid #8490a04f', ba
 const GRAPHIFY_DEFAULTS = Object.freeze({
   mode: 'auto',
   agentUsage: 'smart',
+  advancedActions: false,
+  networkActions: false,
   scope: 'sessions',
   allowlist: [],
   debounceSeconds: 20,
@@ -58,7 +60,7 @@ function GraphSettings({ form, close }) {
     }
     setSaving(true)
     try {
-      const values={mode:draft.mode,agentUsage:draft.agentUsage,scope:draft.scope,allowlist,debounceSeconds:Number(draft.debounceSeconds),minIntervalSeconds:Number(draft.minIntervalSeconds),excludePatterns}
+      const values={mode:draft.mode,agentUsage:draft.agentUsage,advancedActions:!!draft.advancedActions,networkActions:!!draft.advancedActions&&!!draft.networkActions,scope:draft.scope,allowlist,debounceSeconds:Number(draft.debounceSeconds),minIntervalSeconds:Number(draft.minIntervalSeconds),excludePatterns}
       const ops=Object.entries(values).map(([field,value])=>({op:'set',path:[field],value}))
       const ok=await form.mutate(ops,snapshot.revision)
       if (ok) {setDirty(false);setNotice('设置已保存到 DSH，后续自动任务立即采用新规则。当前运行中的扫描可能先完成。')}
@@ -103,7 +105,15 @@ function GraphSettings({ form, close }) {
       h('textarea',{style:{...FIELD,height:112,resize:'vertical'},value:draft.excludeText,onChange:e=>change('excludeText',e.target.value)}),
       h('span',{style:{opacity:.65}},'采用 Graphify --exclude 规则，此外继续读取项目 .gitignore / .graphifyignore。')
     ),
-    h('p',{style:{opacity:.75}},'AI 语义分析：保持关闭。自动扫描只解析本地代码，不调用模型、不产生 AI Token；高级语义分析需另行明确触发。'),
+    h('label',{style:{...row,flexDirection:'row',alignItems:'center',gap:8}},
+      h('input',{type:'checkbox',checked:!!draft.advancedActions,onChange:e=>change('advancedActions',e.target.checked)}),
+      h('span',{style:{...lbl,flex:1}},'允许高级本地操作（Git Hook、图谱合并、记忆记录）')
+    ),
+    h('label',{style:{...row,flexDirection:'row',alignItems:'center',gap:8,opacity:draft.advancedActions?1:.55}},
+      h('input',{type:'checkbox',checked:!!draft.networkActions,disabled:!draft.advancedActions,onChange:e=>change('networkActions',e.target.checked)}),
+      h('span',{style:{...lbl,flex:1}},'允许联网／AI 操作（可上传项目资料并消耗 Token）')
+    ),
+    h('p',{style:{opacity:.75}},'以上权限默认关闭，须在 DSH 设置中主动开启；普通自动扫描始终只解析本地代码。联网及 AI 操作不会随着代码保存自动启动。'),
     notice?h('p',{role:'status',style:{overflowWrap:'anywhere'}},notice):null,
     h('div',{style:{display:'flex',justifyContent:'flex-end',gap:8}},
       h('button',{style:BUTTON,disabled:!dirty||saving,onClick:()=>{setDirty(false);setNotice('') }},'撤销'),
