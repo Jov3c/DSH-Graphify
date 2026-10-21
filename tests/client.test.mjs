@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, URL } from 'node:url'
 import { resolve, dirname } from 'node:path'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const body = readFileSync(resolve(root, 'src/client.js'), 'utf8')
@@ -11,7 +11,7 @@ function mockReact() {
 }
 function loadClient() {
   const module = { exports: {} }
-  vm.runInNewContext(`(function(require, module, exports){${body}\n})`, {})(name => {
+  vm.runInNewContext(`(function(require, module, exports){${body}\n})`, { URL })(name => {
     if (name === 'react') return mockReact()
     throw Error(`Unknown dependency ${name}`)
   }, module, module.exports)
@@ -39,15 +39,21 @@ test('client exports apply + inject and uses official sidebar extension', async 
   assert.equal(typeof injected.loadGraph, 'function')
   assert.equal(typeof injected.loadStatus, 'function')
   assert.equal(typeof injected.loadHtml, 'function')
+  assert.equal(typeof injected.loadTree, 'function')
+  assert.equal(typeof injected.loadCallflow, 'function')
   assert.equal(injected.settingsForm.id,'dsh-graphify')
   assert.ok(api.inject.includes('configForms'))
   assert.deepEqual([...await injected.loadGraph()], [123, 125])
   assert.deepEqual([...await injected.loadStatus()], [123, 125])
   assert.deepEqual([...await injected.loadHtml()], [123, 125])
+  assert.deepEqual([...await injected.loadTree()], [123, 125])
+  assert.deepEqual([...await injected.loadCallflow()], [123, 125])
   assert.deepEqual(reads, [
     { id: 'my-session', path: 'graphify-out/graph.json' },
     { id: 'my-session', path: 'graphify-out/.dsh-graphify-status.json' },
     { id: 'my-session', path: 'graphify-out/graph.html' },
+    { id: 'my-session', path: 'graphify-out/GRAPH_TREE.html' },
+    { id: 'my-session', path: 'graphify-out/GRAPH_CALLFLOW.html' },
   ])
 })
 test('prebuilt client is self-registering DSH factory', () => {
@@ -120,4 +126,20 @@ test('background revisions never replace a viewed graph until user explicitly re
   assert.ok(code.includes('加载最新图谱'))
   assert.ok(!code.includes('value.updatedAt !== lastReady'))
   assert.ok(code.includes("display:showSettings?'none':'flex'"))
+})
+
+test('only recognized upstream tree and callflow HTML can run in the isolated iframe',()=>{
+  const {prepareGraphDocument} = loadClient().__test
+  for(const [view,url,body] of [
+    ['tree','https://d3js.org/d3.v7.min.js','d3.hierarchy(x); d3.tree();'],
+    ['callflow','https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js','mermaid.initialize(config); <div class="mermaid"></div>'],
+  ]){
+    const html='<html><head><script src="'+url+'"></script></head><body><script>'+body+'</script></body></html>'
+    const safe=prepareGraphDocument(html,view)
+    assert.ok(safe.includes('Content-Security-Policy'))
+    assert.ok(safe.includes("connect-src 'none'"))
+    assert.ok(safe.includes(url))
+    assert.throws(()=>prepareGraphDocument(html.replace('</head>','<script src="https://evil.example/malware.js"></script></head>'),view),/Unexpected external script/)
+  }
+  assert.throws(()=>prepareGraphDocument('<html><head></head><body></body></html>','tree'),/Unrecognized original/)
 })
