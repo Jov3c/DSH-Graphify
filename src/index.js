@@ -2,7 +2,7 @@ import { resolve, relative, isAbsolute } from 'node:path'
 import { realpath, stat } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { runGraphify } from './runtime.js'
+import { runGraphify, installGraphifyExtras } from './runtime.js'
 import { createAutoGraphManager } from './auto.js'
 import { readSettings } from './settings.js'
 import { graphifyAgentGuidance } from './agent-guidance.js'
@@ -79,6 +79,7 @@ export function apply(ctx, configuration) {
   for(const descriptor of extraToolDescriptors({
     project: async(args,exec)=>projectDirectory(workspace(exec?.agent?.session),args.directory||''),
     run: runGraphify,
+    installExtras:installGraphifyExtras,
     settings:()=>readSettings(configuration),
   }))ctx.tools.register(defineTool(descriptor))
 
