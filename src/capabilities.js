@@ -5,7 +5,7 @@
  */
 import { readFile, stat, realpath } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { join, resolve, relative, isAbsolute } from 'node:path'
+import { join, resolve, relative, isAbsolute, dirname } from 'node:path'
 
 const toolResult = () => ({ schema:{type:'string'}, render:(_args,result)=>[{type:'text',text:result}] })
 const text = (value,name,max=500) => {
@@ -27,6 +27,10 @@ async function inside(root,file,{mustExist=false}={}){
     if(relativePhysical==='..'||relativePhysical.startsWith('../')||relativePhysical.startsWith('..\\')||isAbsolute(relativePhysical))throw Error('Graph file real path escapes the DSH workspace')
     return physical
   }
+  // New output paths must also respect symlinked parent directories.
+  const parent=await realpath(dirname(absolute))
+  const relParent=relative(await realpath(root),parent)
+  if(relParent==='..'||relParent.startsWith('../')||relParent.startsWith('..\\')||isAbsolute(relParent))throw Error('Output directory real path escapes the DSH workspace')
   return absolute
 }
 export async function graphStats(root) {
