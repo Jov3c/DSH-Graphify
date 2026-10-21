@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const source = readFileSync(join(root, 'src/index.js'), 'utf8')
 const stub = source.replace("import { defineTool } from '@deepseek-ai/dsh-tools'", 'const defineTool = x => x')
-  .replace("import { runGraphify } from './runtime.js'", "const graphifyCalls=[]; const runGraphify = async (...args) => { graphifyCalls.push(args); return 'mock Graphify' }")
+  .replace("import { runGraphify, installGraphifyExtras } from './runtime.js'", "const graphifyCalls=[]; const runGraphify = async (...args) => { graphifyCalls.push(args); return 'mock Graphify' }; const installGraphifyExtras = async () => 'mock extras'")
   .replace("export { runGraphify } from './runtime.js'", 'export { runGraphify, graphifyCalls }')
   .replace("import { createAutoGraphManager } from './auto.js'", "const createAutoGraphManager = () => ({ attach: async () => {}, detach: () => {}, stop: () => {} })")
   .replace("import { readSettings } from './settings.js'", "const readSettings = () => ({mode: 'auto', agentUsage:'smart', scope: 'sessions',allowlist:[],debounceSeconds:3,excludePatterns:[]})")
