@@ -95,3 +95,36 @@ test('when opted in, the typed CLI cannot escape authorized project paths or use
   assert.deepEqual(s.calls.at(-1),['extract','.','--backend','ollama','--token-budget','4000'])
  }finally{await rm(root,{recursive:true,force:true})}
 })
+
+test('global registry, cluster, PR detail, and clone use fixed typed CLI arguments',async()=>{
+  const root=await setup()
+  try{
+    const s=toolSuite(root,{advancedActions:true,networkActions:true})
+    await s.find('graphify_cluster').execute({resolution:1.5})
+    assert.deepEqual(s.calls.at(-1),['cluster-only','.','--resolution','1.5','--no-label'])
+    await s.find('graphify_pr').execute({mode:'detail',number:42})
+    assert.deepEqual(s.calls.at(-1),['prs','42'])
+    await s.find('graphify_pr').execute({mode:'triage'})
+    assert.deepEqual(s.calls.at(-1),['prs','--triage'])
+    await s.find('graphify_global').execute({action:'list'})
+    assert.deepEqual(s.calls.at(-1),['global','list'])
+    await s.find('graphify_global').execute({action:'add',file:'graphify-out/graph.json',tag:'primary'})
+    assert.deepEqual(s.calls.at(-1).slice(0,2),['global','add'])
+    assert.deepEqual(s.calls.at(-1).slice(-2),['--as','primary'])
+    await s.find('graphify_clone').execute({url:'https://github.com/example/repository',folder:'repository'})
+    assert.equal(s.calls.at(-1)[0],'clone')
+    assert.equal(s.calls.at(-1)[3].endsWith('repository'),true)
+    await assert.rejects(s.find('graphify_clone').execute({url:'https://evil.example/example/repository',folder:'repo'}),/Only public github.com/)
+    await assert.rejects(s.find('graphify_clone').execute({url:'https://github.com/example/repository',folder:'../../escape'}),/Graph file must stay within/)
+  }finally{await rm(root,{recursive:true,force:true})}
+})
+test('GitHub PR requests require remote authorization, while local inspection remains available',async()=>{
+ const root=await setup()
+ try{
+  const s=toolSuite(root)
+  await assert.rejects(s.find('graphify_pr').execute({mode:'detail',number:4}),/Enable Network\/AI/)
+  await s.find('graphify_global').execute({action:'list'})
+  assert.deepEqual(s.calls.at(-1),['global','list'])
+  await assert.rejects(s.find('graphify_global').execute({action:'remove',tag:'x'}),/Enable Advanced/)
+ }finally{await rm(root,{recursive:true,force:true})}
+})
