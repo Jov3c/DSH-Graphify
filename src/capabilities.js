@@ -98,7 +98,7 @@ export function extraToolDescriptors({project,run,settings}) {
         if(!['tree','callflow','html'].includes(view))throw Error('view must be tree, callflow, or html')
         if(!existsSync(join(root,'graphify-out','graph.json')))throw Error('Build a graph before exporting views')
         const result=await run(FORMAT[view],root,{timeoutMs:180000,maxOutput:10000})
-        return result+'\nExpected output: '+produced[view]+'\nSwitch views in DSH's Graphify sidebar to view the generated original HTML.'
+        return result+'\nExpected output: '+produced[view]+'\nOpen the generated tree or callflow file using the Graphify view selector in the DSH sidebar.'
       }),
     },
     {
