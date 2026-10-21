@@ -205,3 +205,27 @@ export async function runGraphify(args, cwd, { timeoutMs = 180_000, maxOutput = 
   const output = await runProgram(executable, args, { cwd, timeoutMs, maxOutput })
   return output || 'Graphify complete. Refresh the Graphify right sidebar tab.'
 }
+
+/**
+ * Explicit advanced setup: install selected OFFICIAL Graphify optional extras.
+ * Never called by auto-indexing or ordinary Agent graph queries.
+ * The allowlist prevents arbitrary pip package injection through Agent args.
+ */
+const OPTIONAL_EXTRAS = new Set([
+  'mcp','pdf','office','video','svg','neo4j','falkordb',
+  'postgres','watch','openai','gemini','anthropic','ollama',
+  'kimi','sql','chinese','pascal','terraform','r','erlang',
+])
+export async function installGraphifyExtras(extras,{timeoutMs=900_000}={}) {
+  if(!Array.isArray(extras)||extras.length<1||extras.length>10||extras.some(x=>!OPTIONAL_EXTRAS.has(x)))
+    throw Error('Select 1–10 supported Graphify optional extras')
+  await ensureRuntime()
+  const paths=runtimePaths()
+  const unique=[...new Set(extras)].sort()
+  // Reuse existing pinned version, do not mutate PATH, global Python or
+  // upgrade Graphify to an unverified release.
+  const requirement='graphifyy['+unique.join(',')+']=='+GRAPHIFY_VERSION
+  return await runProgram(paths.uv,['pip','install','--python',paths.python,requirement],{
+    cwd:paths.root,env:environment(paths),timeoutMs,maxOutput:12000,
+  })
+}
