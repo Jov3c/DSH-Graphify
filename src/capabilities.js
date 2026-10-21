@@ -3,7 +3,7 @@
  * Read-only graph operations work by default; writes / remote side effects
  * require explicitly enabled persistent DSH settings.
  */
-import { readFile, stat } from 'node:fs/promises'
+import { readFile, stat, realpath } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join, resolve, relative, isAbsolute } from 'node:path'
 
@@ -16,11 +16,17 @@ const approved=(settings,remote=false)=>{
   if(!settings()?.advancedActions)throw Error('This Graphify operation changes local files or Git state. Enable Advanced actions in Graphify settings first.')
   if(remote&&!settings()?.networkActions)throw Error('This operation may access the network or an LLM. Enable Network and AI operations in Graphify settings first.')
 }
-function inside(root,file,{mustExist=false}={}){
+async function inside(root,file,{mustExist=false}={}){
   const absolute=resolve(root,text(file,'path',1024))
   const rel=relative(root,absolute)
   if(rel==='..'||rel.startsWith('../')||rel.startsWith('..\\')||isAbsolute(rel))throw Error('Graph file must stay within the DSH project workspace')
   if(mustExist&&!existsSync(absolute))throw Error('Graph file does not exist: '+file)
+  if(mustExist){
+    const physical=await realpath(absolute)
+    const relativePhysical=relative(await realpath(root),physical)
+    if(relativePhysical==='..'||relativePhysical.startsWith('../')||relativePhysical.startsWith('..\\')||isAbsolute(relativePhysical))throw Error('Graph file real path escapes the DSH workspace')
+    return physical
+  }
   return absolute
 }
 export async function graphStats(root) {
@@ -92,7 +98,7 @@ export function extraToolDescriptors({project,run,settings}) {
         if(!['tree','callflow','html'].includes(view))throw Error('view must be tree, callflow, or html')
         if(!existsSync(join(root,'graphify-out','graph.json')))throw Error('Build a graph before exporting views')
         const result=await run(FORMAT[view],root,{timeoutMs:180000,maxOutput:10000})
-        return result+'\nExpected output: '+produced[view]+'\nNote: DSH embeds only the vis-network HTML by default in this version.'
+        return result+'\nExpected output: '+produced[view]+'\nSwitch views in DSH's Graphify sidebar to view the generated original HTML.'
       }),
     },
     {
@@ -110,12 +116,14 @@ export function extraToolDescriptors({project,run,settings}) {
     },
     {
       name:'graphify_workflow',
-      description:'Read-only Graphify PR dashboard, shared community conflicts, Git hook installation status, global graph list and official multigraph diagnosis. Does not change Git files or call an LLM.',
+      description:'Read-only Graphify PR dashboard, shared community conflicts, Git hook installation status, global graph list and official multigraph diagnosis. Does not change Git files or call an LLM. PR lookups can contact GitHub and require Network/AI permission.',
       parameters:{operation:{type:'string',required:true,description:'pr-list, pr-conflicts, hook-status, global-list or multigraph.'},directory:{type:'string',description:'Project directory, optional.'}},
       output,
       execute:wrap(async(args,root)=>{
-        const cmd=READONLY[text(args.operation,'operation',40)]
+        const operation=text(args.operation,'operation',40)
+        const cmd=READONLY[operation]
         if(!cmd)throw Error('Unsupported read-only operation')
+        if(operation.startsWith('pr-'))approved(settings,true)
         return await run(cmd,root,{timeoutMs:90000})
       }),
     },
@@ -152,7 +160,7 @@ export function extraToolDescriptors({project,run,settings}) {
       execute:wrap(async(args,root)=>{
         approved(settings)
         if(!Array.isArray(args.graphs)||args.graphs.length<2||args.graphs.length>12)throw Error('Provide 2–12 graph JSON paths')
-        const graphs=args.graphs.map(x=>inside(root,x,{mustExist:true}))
+        const graphs=await Promise.all(args.graphs.map(x=>inside(root,x,{mustExist:true})))
         if(graphs.some(x=>!x.endsWith('.json')))throw Error('Only .json graph files supported')
         return await run(['merge-graphs',...graphs,'--out','graphify-out/merged-graph.json'],root,{timeoutMs:240000})
       }),
