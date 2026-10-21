@@ -52,7 +52,6 @@ test('exposes safe read-only upstream tree, callflow, wiki, PR and hook status',
     ['graphify_export',{format:'obsidian'},['export','obsidian']],
     ['graphify_export',{format:'graphml'},['export','graphml']],
     ['graphify_workflow',{operation:'hook-status'},['hook','status']],
-    ['graphify_workflow',{operation:'pr-conflicts'},['prs','--conflicts']],
     ['graphify_workflow',{operation:'global-list'},['global','list']]
   ]){
     assert.match(await s.find(name).execute(args),/Graphify CLI done/)
@@ -60,6 +59,7 @@ test('exposes safe read-only upstream tree, callflow, wiki, PR and hook status',
   }
   await assert.rejects(s.find('graphify_export').execute({format:'neo4j'}),/Unsupported/)
   await assert.rejects(s.find('graphify_workflow').execute({operation:'rm -rf /'}),/Unsupported/)
+  await assert.rejects(s.find('graphify_workflow').execute({operation:'pr-conflicts'}),/Enable Advanced actions/)
  }finally{await rm(root,{recursive:true,force:true})}
 })
 test('local mutations, hooks, merges, external URLs and AI analysis remain disabled by default',async()=>{
@@ -82,6 +82,8 @@ test('when opted in, the typed CLI cannot escape authorized project paths or use
  const root=await setup()
  try{
   const s=toolSuite(root,{advancedActions:true,networkActions:true})
+  await s.find('graphify_workflow').execute({operation:'pr-conflicts'})
+  assert.deepEqual(s.calls.at(-1),['prs','--conflicts'])
   await s.find('graphify_git').execute({action:'install'})
   assert.deepEqual(s.calls.at(-1),['hook','install'])
   await s.find('graphify_memory').execute({action:'reflect'})
