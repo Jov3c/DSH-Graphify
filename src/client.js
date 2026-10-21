@@ -162,6 +162,27 @@ function systemDefaultGraphTheme(source) {
   return result
 }
 
+/**
+ * Other upstream views have their own CDNs and must stay inside an
+ * opaque-origin script-only iframe. Reject arbitrary project HTML.
+ */
+function otherOriginalDocument(html, view) {
+  if(typeof html !== 'string'||html.length>32*1024*1024)throw Error('Invalid or oversized view HTML')
+  const specs={
+    tree:{src:'https://d3js.org/d3.v7.min.js',signatures:['d3.hierarchy(', 'd3.tree()']},
+    callflow:{src:'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js',signatures:['mermaid.initialize(', 'class="mermaid"']},
+  }
+  const spec=specs[view]
+  if(!spec||!spec.signatures.every(x=>html.includes(x)))throw Error('Unrecognized original Graphify '+view+' HTML')
+  const scripts=[...html.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/gi)]
+  if(scripts.length!==1||scripts[0][1]!==spec.src)throw Error('Unexpected external script in '+view+' HTML')
+  const csp="default-src 'none'; script-src 'unsafe-inline' "+new URL(spec.src).origin+"; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'"
+  if(!/<head(?:\s[^>]*)?>/i.test(html))throw Error('Missing <head> in Graphify view')
+  return html.replace(/<head(?:\s[^>]*)?>/i,match=>match+'\n<meta http-equiv="Content-Security-Policy" content="'+csp+'">')
+}
+function prepareGraphDocument(html,view='network'){
+  return view==='network' ? originalGraphDocument(html) : otherOriginalDocument(html,view)
+}
 function originalGraphDocument(html) {
   if (typeof html !== 'string' || html.length > 32 * 1024 * 1024) throw Error('Invalid or oversized Graphify HTML.')
   const required = [
@@ -193,7 +214,7 @@ function graphRefreshAction(previous, next, previewLoaded, hadStatus) {
   if (!previous && !hadStatus) return 'none'
   return 'notify'
 }
-function OriginalGraphPreview({ loadHtml, revision, enabled, onLoadError, onLoadComplete }) {
+function OriginalGraphPreview({ loadHtml, view='network', revision, enabled, onLoadError, onLoadComplete }) {
   const [frameUrl, setFrameUrl] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -207,7 +228,7 @@ function OriginalGraphPreview({ loadHtml, revision, enabled, onLoadError, onLoad
     Promise.resolve().then(() => loadHtml(controller.signal)).then(bytes => {
       if (controller.signal.aborted) return
       const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
-      const source = originalGraphDocument(text)
+      const source = prepareGraphDocument(text,view)
       objectUrl = URL.createObjectURL(new Blob([source], { type: 'text/html;charset=utf-8' }))
       setFrameUrl(objectUrl)
       setLoading(false)
@@ -223,7 +244,7 @@ function OriginalGraphPreview({ loadHtml, revision, enabled, onLoadError, onLoad
       onLoadError?.(message)
     })
     return () => { controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl) }
-  }, [loadHtml, revision, enabled])
+  }, [loadHtml, revision, enabled, view])
   return h('div', { style: { display: 'flex', flex: 1, minHeight: 260, flexDirection: 'column' } },
     loading ? h('p', { role: 'status', style: { fontSize: 12, opacity: .8 } }, 'Loading the original Graphify graph.html…') : null,
     error ? h('p', { role: 'status', style: { fontSize: 12, padding: 10, opacity: .8, overflowWrap: 'anywhere' } }, error) : null,
@@ -243,6 +264,7 @@ function OriginalGraphPreview({ loadHtml, revision, enabled, onLoadError, onLoad
 function GraphPanel(props) {
   const { tab } = props.useTabInfo()
   const [showSettings, setShowSettings] = useState(false)
+  const [view,setView]=useState('network')
   const [autoStatus, setAutoStatus] = useState(null)
   const [refresh, setRefresh] = useState(0)
   const [pendingRevision,setPendingRevision] = useState(null)
@@ -286,6 +308,8 @@ function GraphPanel(props) {
   return h('section', { style: { height: '100%', minHeight: 240, display: 'flex', flexDirection: 'column', padding: 8, gap: 8, color: 'inherit', fontFamily: 'system-ui,sans-serif', boxSizing: 'border-box' }, 'data-dsh-graphify': 'original' },
     h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 } },
       h('strong', { style: { fontSize: 14 } }, 'Graphify · Original'),
+      h('select',{style:{...FIELD,width:'auto',maxWidth:145,padding:'5px 7px'},'aria-label':'Graphify 视图',value:view,onChange:e=>{setView(e.target.value);setPendingRevision(null)}},
+        ['network','tree','callflow'].map(x=>h('option',{key:x,value:x},x==='network'?'关系网络':x==='tree'?'树状图':'调用流程'))),
       h('div', { style: { display: 'flex', gap: 6 } },
         h('button', { style: BUTTON, onClick: reload }, '↻ Refresh'),
         h('button', { style: BUTTON, 'aria-label': 'Graphify 设置', onClick: () => setShowSettings(x => !x) }, showSettings ? '返回图谱' : '⚙ 设置')
@@ -304,7 +328,7 @@ function GraphPanel(props) {
     ):null,
     showSettings ? h(GraphSettings,{form:props.settingsForm,close:()=>setShowSettings(false)}):null,
     h('div',{style:{display:showSettings?'none':'flex',flex:1,minHeight:0,flexDirection:'column'}},
-      h(OriginalGraphPreview,{loadHtml:props.loadHtml,enabled:tab.visible,revision:refresh,onLoadComplete})
+      h(OriginalGraphPreview,{loadHtml:view==='tree'?props.loadTree:view==='callflow'?props.loadCallflow:props.loadHtml,view,enabled:tab.visible,revision:refresh,onLoadComplete})
     ),
   )
 }
@@ -324,6 +348,16 @@ exports.apply = function apply(ctx) {
         if (!result.ok) throw result.error
         return result.value.data
       },
+      loadTree: async signal => {
+        const r=await ctx.remote.workspaceFiles.readBytes(sessionId,'graphify-out/GRAPH_TREE.html',{},signal)
+        if(!r.ok)throw r.error
+        return r.value.data
+      },
+      loadCallflow: async signal => {
+        const r=await ctx.remote.workspaceFiles.readBytes(sessionId,'graphify-out/GRAPH_CALLFLOW.html',{},signal)
+        if(!r.ok)throw r.error
+        return r.value.data
+      },
       loadGraph: async signal => {
         const result = await ctx.remote.workspaceFiles.readBytes(sessionId, 'graphify-out/graph.json', {}, signal)
         if (!result.ok) {
@@ -342,4 +376,4 @@ exports.apply = function apply(ctx) {
     }),
   }, GraphPanel)), 'dsh-graphify:tab-body')
 }
-exports.__test = { originalGraphDocument, systemDefaultGraphTheme, graphRefreshAction }
+exports.__test = { originalGraphDocument, otherOriginalDocument, prepareGraphDocument, systemDefaultGraphTheme, graphRefreshAction }
