@@ -252,7 +252,7 @@ export function extraToolDescriptors({project,run,settings}) {
         const url=new URL(text(args.url,'url',1200))
         if(url.protocol!=='https:'||url.hostname!=='github.com'||url.username||url.password)throw Error('Only public github.com HTTPS repo URLs are allowed')
         if(!/^\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?\/?$/.test(url.pathname))throw Error('Invalid GitHub repository path')
-        const target=inside(root,args.folder)
+        const target=await inside(root,args.folder)
         if(existsSync(target))throw Error('Clone destination already exists')
         const cmd=['clone',url.toString(),'--out',target]
         if(args.branch){
