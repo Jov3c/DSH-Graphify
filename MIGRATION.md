@@ -21,6 +21,7 @@
 | 离线图谱合并、全局图谱登记 | `graphify_merge`、`graphify_global` | 默认禁止，全局操作会写入用户级 Graphify 目录 |
 | 自定义社区重聚类 | `graphify_cluster` | `--no-label` 不触发额外 AI 标签生成 |
 | 导入 URL / 论文 / 视频 | `graphify_add` | 仅明确授权后调用；格式依赖原版可选依赖是否已安装 |
+| 按需安装官方 extras | `graphify_dependencies` | 显式授权后用插件缓存环境内的 uv 安装固定版本的可选依赖；不修改系统 Python |
 | 外部后端语义抽取 | `graphify_semantic` | 默认关闭，必须显式开启高级及联网权限、设置 API 密钥和预算 |
 | GitHub 项目克隆 | `graphify_clone` | 仅 HTTPS github.com；输出受 DSH 工作区路径约束 |
 | Agent 自然语言图谱优先 | DSH System Prompt + Agent tools | 不保证工具每次必定调用；不强制打断普通聊天 |
@@ -29,8 +30,8 @@
 
 下列项目仍属于**待开发/待验证**，不能作为当前 Beta 的已完成承诺：
 
-- **MCP Server**：Graphify 的 `graphify-mcp` 需要 `graphifyy[mcp]` 可选依赖、服务生命周期管理和 DSH 原生连接配置。当前并未替用户安装或启动服务。
-- **可选解析器依赖管理**：PDF、Office、视频、SVG、某些语言 grammar、Neo4j/FalkorDB 等需 Graphify 对应 extras；默认引擎安装只包含基础 `graphifyy`，这些功能调用不保证成功。
+- **MCP Server 端到端连接**：Graphify 的 `graphify-mcp` 可选依赖已有显式安装入口，但 DSH 的 `@deepseek-ai/dsh-mcp-client` 服务条目、重连和会话生命周期仍需单独配置与验证。插件不会擅自添加持久后台进程。参见 [MCP_SETUP.md](./MCP_SETUP.md)。
+- **可选解析器完整验收**：已提供 `graphify_dependencies` 原生工具，在用户开启两级权限后可按需安装部分官方 extras（MCP、PDF、Office、视频、SVG 等），但这些格式的真实解析与兼容性尚未完成跨平台集成测试。默认引擎仍只安装基础 `graphifyy`。
 - **Neo4j / FalkorDB 实际写入**：数据库凭据、TLS、连接权限、目标操作确认尚未提供完整 DSH 安全接入。
 - **SVG 导出和 `label` 的模型后端选择**：可选依赖/费用控制尚未做完整的原生界面。
 - **Graphify 原生 hook-guard/拦截读取文件机制**：当前用 DSH 官方 `systemPrompt.section()` 做工具优先指导，未创建强制的 pre-tool hooks；需要核对 DSH 版本的安全授权链。
