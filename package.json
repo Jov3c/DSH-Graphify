@@ -1,7 +1,7 @@
 {
   "name": "@jov3c/dsh-graphify",
-  "version": "0.8.0-beta.1",
-  "description": "Original Graphify in DSH Desktop: stronger natural-language tool selection, evidence-aware impact analysis and unobtrusive auto-indexing",
+  "version": "0.8.1-beta.1",
+  "description": "Original Graphify in DSH Desktop, following OS light/dark theme by default with interactive graph and Agent tooling",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
