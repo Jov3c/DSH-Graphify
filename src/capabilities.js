@@ -94,7 +94,7 @@ export function extraToolDescriptors({project,run,settings,installExtras}) {
     },
     {
       name:'graphify_view',
-      description:'Generate an original Graphify visualization: tree (D3 collapsible hierarchy), callflow (call flow HTML), html (vis-network). Uses existing graph and creates output under graphify-out. The generated tree/callflow files can be opened in an external browser until the DSH panel supports these file types.',
+      description:'Generate an original Graphify visualization: tree (D3 collapsible hierarchy), callflow (call flow HTML), html (vis-network). Uses existing graph and creates output under graphify-out. The original generated tree/callflow HTML can be selected in the Graphify right sidebar; generate the file before selecting that view.',
       parameters:{view:{type:'string',required:true,description:'One of tree, callflow, html.'},directory:{type:'string',description:'Project directory, optional.'}},
       output,
       execute:wrap(async(args,root)=>{
