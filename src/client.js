@@ -282,16 +282,21 @@ function GraphPanel(props) {
   const [showSettings, setShowSettings] = useState(false)
   const [view,setView]=useState('network')
   const [autoStatus, setAutoStatus] = useState(null)
-  const [refresh, setRefresh] = useState(0)
+  const [refresh, setRefresh] = useState({network:0,tree:0,callflow:0})
   const [pendingRevision,setPendingRevision] = useState(null)
   const lastSeenRevision=useRef(null)
   const statusSeen=useRef(false)
   const previewLoaded=useRef(false)
-  const reload=useCallback(()=>{
-    previewLoaded.current=false
-    setPendingRevision(null)
-    setRefresh(n=>n+1)
+  // Each view owns its iframe and refresh revision; navigating away from a
+  // view does not destroy the current zoom/filter/expansion state.
+  const refreshView=useCallback(target=>{
+    if (target === 'network') {
+      previewLoaded.current=false
+      setPendingRevision(null)
+    }
+    setRefresh(current=>({...current,[target]:current[target]+1}))
   },[])
+  const reload=useCallback(()=>refreshView(view),[refreshView,view])
   const onLoadComplete=useCallback(()=>{previewLoaded.current=true},[])
   useEffect(() => tab.actions.bindCommands({ refresh: reload }), [tab.actions, reload])
   useEffect(() => {
@@ -310,7 +315,7 @@ function GraphPanel(props) {
         if (value.state === 'ready' && value.graphRevision) {
           const action=graphRefreshAction(lastSeenRevision.current,value.graphRevision,previewLoaded.current,statusSeen.current)
           lastSeenRevision.current=value.graphRevision
-          if(action==='reload')reload()
+          if(action==='reload')refreshView('network')
           else if(action==='notify')setPendingRevision(value.graphRevision)
         }
         statusSeen.current=true
@@ -320,7 +325,7 @@ function GraphPanel(props) {
     void probe()
     const timer = setInterval(() => { void probe() }, 2500)
     return () => { active = false; clearInterval(timer); controller.abort() }
-  }, [props.loadStatus, tab.visible, tab.signal, reload])
+  }, [props.loadStatus, tab.visible, tab.signal, refreshView])
   return h('section', { style: { height: '100%', minHeight: 240, display: 'flex', flexDirection: 'column', padding: 8, gap: 8, color: 'inherit', fontFamily: 'system-ui,sans-serif', boxSizing: 'border-box' }, 'data-dsh-graphify': 'original' },
     h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 } },
       h('strong', { style: { fontSize: 14 } }, 'Graphify · Original'),
@@ -340,11 +345,19 @@ function GraphPanel(props) {
     ) : null,
     pendingRevision && !showSettings ? h('div',{role:'status',style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',fontSize:12,padding:'8px 10px',background:'rgba(128,128,128,.10)',borderRadius:8}},
       h('span',{},'图谱已更新；为保留当前缩放、节点选择和筛选，没有自动刷新画面。'),
-      h('button',{style:BUTTON,onClick:reload},'加载最新图谱')
+      h('button',{style:BUTTON,onClick:()=>{setView('network');refreshView('network')}},'加载最新图谱')
     ):null,
     showSettings ? h(GraphSettings,{form:props.settingsForm,close:()=>setShowSettings(false)}):null,
     h('div',{style:{display:showSettings?'none':'flex',flex:1,minHeight:0,flexDirection:'column'}},
-      h(OriginalGraphPreview,{loadHtml:view==='tree'?props.loadTree:view==='callflow'?props.loadCallflow:props.loadHtml,view,enabled:tab.visible,revision:refresh,onLoadComplete})
+      h('div',{key:'network',style:{display:view==='network'?'flex':'none',flex:1,minHeight:0,flexDirection:'column'}},
+        h(OriginalGraphPreview,{loadHtml:props.loadHtml,view:'network',enabled:tab.visible&&view==='network',revision:refresh.network,onLoadComplete})
+      ),
+      h('div',{key:'tree',style:{display:view==='tree'?'flex':'none',flex:1,minHeight:0,flexDirection:'column'}},
+        h(OriginalGraphPreview,{loadHtml:props.loadTree,view:'tree',enabled:tab.visible&&view==='tree',revision:refresh.tree})
+      ),
+      h('div',{key:'callflow',style:{display:view==='callflow'?'flex':'none',flex:1,minHeight:0,flexDirection:'column'}},
+        h(OriginalGraphPreview,{loadHtml:props.loadCallflow,view:'callflow',enabled:tab.visible&&view==='callflow',revision:refresh.callflow})
+      )
     ),
   )
 }
