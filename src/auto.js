@@ -115,8 +115,9 @@ export function createAutoGraphManager({
   const graphFile = root => join(root, 'graphify-out', 'graph.json')
   function reportFailure(project, error) {
     const detail = error instanceof Error ? error.message : String(error)
-    void writeStatus(project.root, 'error', detail).catch(err => log('status write error: ' + err))
+    const written = writeStatus(project.root, 'error', detail).catch(err => log('status write error: ' + err))
     log('Graphify background update: ' + detail)
+    return written
   }
   function startWatcher(project) {
     if(config().mode!=='auto')return
@@ -156,8 +157,13 @@ export function createAutoGraphManager({
       // redundant second scan behind the still-running automatic build.
       if (!manual) project.dirty = true
       const result = await project.running
-      if (manual && !existsSync(join(project.root, 'graphify-out', 'graph.json')))
-        throw new Error('Graphify finished without graph.json; inspect the indexing status')
+      if (manual) {
+        // An earlier graph.json can survive a failed refresh. Verify the
+        // outcome, not merely the existence of an old graph file.
+        const status = await readFile(join(project.root, 'graphify-out', STATUS_NAME), 'utf8').then(JSON.parse).catch(() => null)
+        if (status?.state === 'error') throw new Error('Graphify indexing failed: ' + status.detail)
+        if (!existsSync(graphFile(project.root))) throw new Error('Graphify finished without graph.json; inspect the indexing status')
+      }
       return result || 'Graphify indexing already in progress; reused its result.'
     }
     clearTimeout(project.timer)
@@ -187,7 +193,7 @@ export function createAutoGraphManager({
         project.lastCompletedAt=Date.now()
         return result || 'Graphify code graph updated successfully.'
       } catch (error) {
-        if (!project.closed && !disposed) reportFailure(project, error)
+        if (!project.closed && !disposed) await reportFailure(project, error)
         // Automatic scans remain non-blocking, while Agent-triggered scans
         // must report real errors instead of silently returning success.
         if (manual) throw error
@@ -213,6 +219,10 @@ export function createAutoGraphManager({
       if (disposed || sessions.get(id) !== token) return
       token.root=root
       if(!allowedProject(root,config())||!['auto','open'].includes(config().mode))return
+      // A standalone manual build may have started before this project opened.
+      // Finish it first so opening a session cannot overlap its graph writes.
+      if (manualBuilds.has(root)) await manualBuilds.get(root).catch(() => {})
+      if (disposed || sessions.get(id) !== token) return
       let project = projects.get(root)
       if (!project) {
         project = { root, sessionIds: new Set(), watcher: undefined, timer: undefined, running: undefined, dirty: false, closed: false, documentsStale: false, lastCompletedAt:0, graphRevision:null, seen:new Map() }
