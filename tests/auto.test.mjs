@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { join, relative, resolve, isAbsolute } from 'node:path'
 import { tmpdir } from 'node:os'
 import { classifyChange, createAutoGraphManager, excluded, allowedProject } from '../src/auto.js'
@@ -295,5 +296,80 @@ test('recent completed graph skips rebuild after quickly reopening session',asyn
     await manager.attach(session('two',base))
     await wait(80)
     assert.equal(calls.length,1,'opening an already-fresh graph should not scan it again')
+  }finally{manager.stop();await rm(base,{recursive:true,force:true})}
+})
+
+
+test('manual Graphify build in manual mode serializes concurrent calls and honors exclusions',async()=>{
+  const base=await mkdtemp(join(tmpdir(),'dsh-gfy-manual-'))
+  let count=0, finish
+  const release=new Promise(resolve=>{finish=resolve})
+  const manager=createAutoGraphManager({
+    run:async(args,root)=>{
+      count++
+      assert.deepEqual(args.slice(0,3),['extract','.','--code-only'])
+      assert.ok(args.includes('secrets/'))
+      await release
+      await mkdir(join(root,'graphify-out'),{recursive:true})
+      await writeFile(join(root,'graphify-out','graph.json'),'{"nodes":[],"links":[]}')
+      return 'manual scan succeeded'
+    },
+    resolveProject:permitted(base),workspaceRoot:()=>base,
+    getSettings:()=>({mode:'manual',scope:'sessions',excludePatterns:['secrets/'],debounceSeconds:20,minIntervalSeconds:180}),
+  })
+  try{
+    const first=manager.rebuild(base)
+    const second=manager.rebuild(base)
+    finish()
+    const results=await Promise.all([first,second])
+    assert.deepEqual(results,['manual scan succeeded','manual scan succeeded'])
+    assert.equal(count,1,'simultaneous Agent builds must not duplicate the scan')
+    const status=JSON.parse(await readFile(join(base,'graphify-out','.dsh-graphify-status.json'),'utf8'))
+    assert.equal(status.state,'ready')
+    assert.equal(status.watching,false)
+  }finally{finish?.();manager.stop();await rm(base,{recursive:true,force:true})}
+})
+
+test('Agent build joins an in-flight automatic graph scan without duplicate refresh',async()=>{
+  const base=await mkdtemp(join(tmpdir(),'dsh-gfy-join-'))
+  let entered,release
+  const start=new Promise(resolve=>{entered=resolve})
+  const blocker=new Promise(resolve=>{release=resolve})
+  let scans=0
+  const manager=createAutoGraphManager({
+    run:async(_args,root)=>{
+      scans++
+      entered()
+      await blocker
+      await mkdir(join(root,'graphify-out'),{recursive:true})
+      await writeFile(join(root,'graphify-out','graph.json'),'{"nodes":[],"links":[]}')
+      return 'shared scan completed'
+    },
+    resolveProject:permitted(base),workspaceRoot:()=>base,
+    watchImpl:fakeWatcher().watchImpl,debounceMs:25,
+  })
+  try{
+    await manager.attach(session('joined',base))
+    await start
+    const manual=manager.rebuild(base)
+    release()
+    assert.equal(await manual,'shared scan completed')
+    await wait(80)
+    assert.equal(scans,1,'joining an automatic scan must not schedule another scan')
+  }finally{release?.();manager.stop();await rm(base,{recursive:true,force:true})}
+})
+
+test('manual Graphify scan propagates failures instead of reporting false success',async()=>{
+  const base=await mkdtemp(join(tmpdir(),'dsh-gfy-failed-manual-'))
+  const manager=createAutoGraphManager({
+    run:async()=>{throw Error('offline Graphify engine')},
+    resolveProject:permitted(base),workspaceRoot:()=>base,
+    getSettings:()=>({mode:'off',scope:'sessions',excludePatterns:[],debounceSeconds:20,minIntervalSeconds:180}),
+  })
+  try{
+    await assert.rejects(manager.rebuild(base),/offline Graphify engine/)
+    await waitFor(()=>existsSync(join(base,'graphify-out','.dsh-graphify-status.json')))
+    const status=JSON.parse(await readFile(join(base,'graphify-out','.dsh-graphify-status.json'),'utf8'))
+    assert.equal(status.state,'error')
   }finally{manager.stop();await rm(base,{recursive:true,force:true})}
 })
