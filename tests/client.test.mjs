@@ -143,3 +143,19 @@ test('only recognized upstream tree and callflow HTML can run in the isolated if
   }
   assert.throws(()=>prepareGraphDocument('<html><head></head><body></body></html>','tree'),/Unrecognized original/)
 })
+
+test('hide/show sidebar preserves original iframe, and optional view errors are actionable',()=>{
+  const {viewMissingLabel,viewLoadingLabel}=loadClient().__test
+  assert.match(viewMissingLabel('tree'),/graphify_view/)
+  assert.match(viewMissingLabel('tree'),/view=tree/)
+  assert.match(viewMissingLabel('callflow'),/view=callflow/)
+  assert.match(viewMissingLabel('network'),/graphify-out\/graph.html/)
+  assert.match(viewLoadingLabel('tree'),/树状图/)
+  assert.match(viewLoadingLabel('callflow'),/调用流程/)
+  const code=readFileSync(resolve(root,'src/client.js'),'utf8')
+  assert.ok(code.includes('const [activated, setActivated] = useState(!!enabled)'), 'iframe should activate only once')
+  assert.ok(code.includes('if (enabled) setActivated(true)'), 'sidebar becoming visible starts the first load')
+  assert.ok(code.includes('[loadHtml, revision, activated, view]'), 'visibility changes must not discard iframe state')
+  assert.ok(!code.includes('[loadHtml, revision, enabled, view]'), 'hide/show must not refetch iframe')
+  assert.ok(!code.includes('setView(e.target.value);setPendingRevision(null)'), 'view switch should not hide a pending graph update')
+})
