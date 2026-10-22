@@ -95,10 +95,9 @@ export function apply(ctx, configuration) {
     output: output(),
     async execute(args, exec) {
       const cwd = await projectDirectory(workspace(exec?.agent?.session), args.directory || '')
-      const options = readSettings(configuration)
-      const parameters = ['extract', '.', '--code-only']
-      for (const pattern of options.excludePatterns) parameters.push('--exclude', pattern)
-      const result = await runGraphify(parameters, cwd, { timeoutMs: 600_000 })
+      // Reuse the session manager, not a second independent extractor:
+      // concurrent Agent requests and automatic scans must share one build.
+      const result = await auto.rebuild(cwd)
       return 'Graphify code-only graph: ' + cwd + '\n' + result
     },
   }))
