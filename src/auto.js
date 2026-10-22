@@ -76,6 +76,7 @@ export function createAutoGraphManager({
 }) {
   const sessions = new Map()
   const projects = new Map()
+  const manualBuilds = new Map()
   let disposed = false
   const config=()=>({...DEFAULT_SETTINGS,...getSettings()})
   const effectiveDelay=()=>debounceMs ?? config().debounceSeconds*1000
@@ -148,11 +149,16 @@ export function createAutoGraphManager({
     }
   }
 
-  async function build(project, { force = false } = {}) {
+  async function build(project, { force = false, manual = false } = {}) {
     if (project.closed || disposed || (!force && !['auto','open'].includes(config().mode))) return
     if (project.running) {
-      project.dirty = true
-      return project.running
+      // An explicit Agent request joins the current scan; it does not queue a
+      // redundant second scan behind the still-running automatic build.
+      if (!manual) project.dirty = true
+      const result = await project.running
+      if (manual && !existsSync(join(project.root, 'graphify-out', 'graph.json')))
+        throw new Error('Graphify finished without graph.json; inspect the indexing status')
+      return result || 'Graphify indexing already in progress; reused its result.'
     }
     clearTimeout(project.timer)
     project.timer = undefined
@@ -165,7 +171,7 @@ export function createAutoGraphManager({
           { watching: !!project.watcher, documentsStale: project.documentsStale })
         const args = ['extract', '.', '--code-only']
         for(const pattern of config().excludePatterns)args.push('--exclude',pattern)
-        await run(args, project.root, { timeoutMs: 600_000 })
+        const result = await run(args, project.root, { timeoutMs: 600_000 })
         // Settings may have been switched to off while Graphify was running.
         // A stale task must not overwrite the paused status after it exits.
         if (project.closed || disposed) return
@@ -179,7 +185,13 @@ export function createAutoGraphManager({
         await writeStatus(project.root, 'ready', detail,
           { watching: !!project.watcher, documentsStale: project.documentsStale, htmlAvailable, graphRevision:revision })
         project.lastCompletedAt=Date.now()
-      } catch (error) { if (!project.closed && !disposed) reportFailure(project, error) }
+        return result || 'Graphify code graph updated successfully.'
+      } catch (error) {
+        if (!project.closed && !disposed) reportFailure(project, error)
+        // Automatic scans remain non-blocking, while Agent-triggered scans
+        // must report real errors instead of silently returning success.
+        if (manual) throw error
+      }
       finally {
         project.running = undefined
         if (project.dirty && !project.closed && !disposed && config().mode==='auto') {
@@ -241,11 +253,24 @@ export function createAutoGraphManager({
     }
   }
 
-  /** Agent-triggered build reuses the same serialized per-project queue. */
+  /** Agent-triggered build joins automatic scans and updates the same status
+   * file. Standalone manual/off projects are serialized too, and still honor
+   * scan exclusions without starting file watchers. */
   async function rebuild(root) {
+    if (disposed) throw new Error('Graphify project manager is stopped')
     const project = projects.get(root)
-    if (project) return build(project, { force: true })
-    return run(['extract', '.', '--code-only'], root, { timeoutMs: 600_000 })
+    if (project) return build(project, { force: true, manual: true })
+    const existing = manualBuilds.get(root)
+    if (existing) return existing
+    const temporary = {
+      root, watcher: undefined, timer: undefined, running: undefined,
+      dirty: false, closed: false, documentsStale: false,
+      lastCompletedAt: 0, graphRevision: null, seen: new Map(),
+    }
+    const pending = build(temporary, { force: true, manual: true })
+      .finally(() => { manualBuilds.delete(root) })
+    manualBuilds.set(root, pending)
+    return pending
   }
 
   function refreshSettings() {
@@ -280,6 +305,7 @@ export function createAutoGraphManager({
       project.watcher?.close()
     }
     projects.clear()
+    manualBuilds.clear()
     sessions.clear()
   }
 
