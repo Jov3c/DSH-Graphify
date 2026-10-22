@@ -2,7 +2,7 @@
 
 将开源 [Graphify](https://github.com/Graphify-Labs/graphify) 的代码知识图谱集成进 **DeepSeek Harness（DSH）Desktop**：本地索引代码，在右侧栏查看原版交互式图谱，并让 DSH Agent 根据自然语言调用图谱查询工具。
 
-> **当前版本：0.9.1 Beta。** 核心代码建图和原版关系网络已接入；树状图、调用流程与多项高级 CLI 能力已提供入口。Windows / Linux CI 为接口及逻辑测试，**不等于全部功能都已通过真实 DSH Desktop 端到端验收**。详细覆盖范围与待完成项目见 [MIGRATION.md](./MIGRATION.md)。
+> **当前版本：0.9.2 Beta。** 核心代码建图和原版关系网络已接入；树状图、调用流程与多项高级 CLI 能力已提供入口。Windows / Linux CI 为接口及逻辑测试，**不等于全部功能都已通过真实 DSH Desktop 端到端验收**。详细覆盖范围与待完成项目见 [MIGRATION.md](./MIGRATION.md)。
 
 ## 功能
 
