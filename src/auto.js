@@ -70,6 +70,29 @@ async function writeStatus(root, state, detail = '', extras = {}) {
   // The file is small; the workspace-file remote can read it directly.
   await writeFile(path, JSON.stringify(payload) + '\n', { encoding: 'utf8' })
 }
+async function graphRevision(file) {
+  if (!existsSync(file)) return null
+  const hash=createHash('sha256')
+  for await (const part of createReadStream(file)) hash.update(part)
+  return hash.digest('hex').slice(0,24)
+}
+/** Rewrite the sidebar status after a view or advanced command changed graph.json. */
+export async function updateGraphStatus(root, detail, extras = {}) {
+  const previous = await readFile(join(root, 'graphify-out', STATUS_NAME), 'utf8')
+    .then(value => JSON.parse(value)).catch(() => null)
+  const revision = await graphRevision(join(root, 'graphify-out', 'graph.html'))
+  await writeStatus(root, 'ready',
+    revision === null ? 'Graphify did not produce graph.html; the original graph view is unavailable.' : detail,
+    {
+      watching: previous?.watching === true,
+      documentsStale: previous?.documentsStale === true,
+      ...extras,
+      viewAttempted: true,
+      htmlAvailable: revision !== null,
+      graphRevision: revision,
+    })
+  return revision
+}
 export function createAutoGraphManager({
   run, resolveProject, workspaceRoot, watchImpl = watchFs,
   debounceMs = undefined, minIntervalMs = undefined, getSettings = () => DEFAULT_SETTINGS, log = () => {},
@@ -84,12 +107,6 @@ export function createAutoGraphManager({
   const effectiveInterval=()=>minIntervalMs ?? (debounceMs === undefined ? config().minIntervalSeconds*1000 : 0)
   const scanPolicy=()=>{const s=config(); return JSON.stringify([s.mode,s.scope,s.allowlist,s.excludePatterns])}
   let priorScanPolicy=scanPolicy()
-  async function graphRevision(file) {
-    if (!existsSync(file)) return null
-    const hash=createHash('sha256')
-    for await (const part of createReadStream(file)) hash.update(part)
-    return hash.digest('hex').slice(0,24)
-  }
   function unchangedEvent(project,filename) {
     if (filename == null) return false
     const name=String(filename).replaceAll('\\','/')
@@ -150,13 +167,19 @@ export function createAutoGraphManager({
     }
   }
 
-  async function build(project, { force = false, manual = false } = {}) {
+  async function build(project, { force = false, manual = false, full = false } = {}) {
     if (project.closed || disposed || (!force && !['auto','open'].includes(config().mode))) return
     if (project.running) {
       // An explicit Agent request joins the current scan; it does not queue a
       // redundant second scan behind the still-running automatic build.
       if (!manual) project.dirty = true
+      const runningFull = project.runningFull === true
       const result = await project.running
+      if (manual && full && !runningFull) {
+        // The in-flight scan may have been incremental. A requested full
+        // rebuild must not silently reuse its result.
+        return build(project, { force: true, manual: true, full: true })
+      }
       if (manual) {
         // An earlier graph.json can survive a failed refresh. Verify the
         // outcome, not merely the existence of an old graph file.
@@ -168,30 +191,44 @@ export function createAutoGraphManager({
     }
     clearTimeout(project.timer)
     project.timer = undefined
-    const full = force || !existsSync(graphFile(project.root))
+    const first = !existsSync(graphFile(project.root))
     project.dirty = false
     project.running = (async () => {
       try {
-        await writeStatus(project.root, full ? 'building' : 'updating',
-          full ? 'Preparing local engine and indexing code (no AI or token use)' : 'Refreshing changed code',
+        await writeStatus(project.root, first || full ? 'building' : 'updating',
+          full ? 'Rebuilding the complete local code graph (no AI or token use)'
+            : first ? 'Preparing local engine and indexing code (no AI or token use)' : 'Refreshing changed code',
           { watching: !!project.watcher, documentsStale: project.documentsStale })
         const args = ['extract', '.', '--code-only']
+        if (full) args.push('--force')
         for(const pattern of config().excludePatterns)args.push('--exclude',pattern)
         const result = await run(args, project.root, { timeoutMs: 600_000 })
         // Settings may have been switched to off while Graphify was running.
         // A stale task must not overwrite the paused status after it exits.
         if (project.closed || disposed) return
         if (!existsSync(graphFile(project.root))) throw new Error('Graphify completed but graphify-out/graph.json is missing')
+        // extract only writes graph.json. The original sidebar viewer needs the
+        // upstream HTML export, so generate it in the same serialized task.
+        let viewError
+        try {
+          await run(['export','html'], project.root, { timeoutMs: 180_000, maxOutput: 6000 })
+        } catch (error) {
+          viewError = String(error instanceof Error ? error.message : error).replace(/\s+/g, ' ').slice(0, 300)
+        }
         const revision=await graphRevision(join(project.root, 'graphify-out', 'graph.html'))
         const htmlAvailable=revision!==null
         const detail = !htmlAvailable
-          ? 'Code graph ready, but Graphify did not generate graph.html. This can occur for tiny graphs with fewer than two useful communities.'
+          ? viewError
+            ? 'Code graph ready, but the original graph view could not be generated: ' + viewError
+            : 'Code graph ready, but Graphify did not produce graph.html (single-community or oversized graph). Use graphify_view(html) to retry.'
           : project.documentsStale ? 'Code graph ready. Documents/media require separate semantic refresh.' : 'Graph up to date'
         project.graphRevision=revision
         await writeStatus(project.root, 'ready', detail,
-          { watching: !!project.watcher, documentsStale: project.documentsStale, htmlAvailable, graphRevision:revision })
+          { watching: !!project.watcher, documentsStale: project.documentsStale, viewAttempted: true,
+            htmlAvailable, graphRevision:revision, htmlError: viewError })
         project.lastCompletedAt=Date.now()
-        return result || 'Graphify code graph updated successfully.'
+        const summary = result || 'Graphify code graph updated successfully.'
+        return htmlAvailable ? summary : summary + '\nGraph view: ' + detail
       } catch (error) {
         if (!project.closed && !disposed) await reportFailure(project, error)
         // Automatic scans remain non-blocking, while Agent-triggered scans
@@ -200,11 +237,13 @@ export function createAutoGraphManager({
       }
       finally {
         project.running = undefined
+        project.runningFull = undefined
         if (project.dirty && !project.closed && !disposed && config().mode==='auto') {
           schedule(project)
         }
       }
     })()
+    project.runningFull = full
     return project.running
   }
 
@@ -221,20 +260,22 @@ export function createAutoGraphManager({
       if(!allowedProject(root,config())||!['auto','open'].includes(config().mode))return
       // A standalone manual build may have started before this project opened.
       // Finish it first so opening a session cannot overlap its graph writes.
-      if (manualBuilds.has(root)) await manualBuilds.get(root).catch(() => {})
+      if (manualBuilds.has(root)) await manualBuilds.get(root).promise.catch(() => {})
       if (disposed || sessions.get(id) !== token) return
       let project = projects.get(root)
       if (!project) {
-        project = { root, sessionIds: new Set(), watcher: undefined, timer: undefined, running: undefined, dirty: false, closed: false, documentsStale: false, lastCompletedAt:0, graphRevision:null, seen:new Map() }
+        project = { root, sessionIds: new Set(), watcher: undefined, timer: undefined, running: undefined, runningFull: undefined, dirty: false, closed: false, documentsStale: false, lastCompletedAt:0, graphRevision:null, seen:new Map() }
         projects.set(root, project)
         startWatcher(project)
         // Every session activation checks the graph, but existing graphs are
-        // refreshed incrementally rather than rebuilt from scratch.
+        // refreshed incrementally rather than rebuilt from scratch. A ready
+        // graph without an attempted view must rebuild so graph.html exists.
         let skipRecent=false
         try {
           const status=JSON.parse(await readFile(join(root,'graphify-out',STATUS_NAME),'utf8'))
           const elapsed=Date.now()-statSync(graphFile(root)).mtimeMs
-          skipRecent=status.state==='ready' && elapsed>=0 && elapsed<effectiveInterval()
+          const viewSettled=status.htmlAvailable===true || status.viewAttempted===true
+          skipRecent=status.state==='ready' && viewSettled && elapsed>=0 && elapsed<effectiveInterval()
           if(skipRecent){project.lastCompletedAt=Date.now();project.graphRevision=status.graphRevision??null}
         } catch { /* no reliable prior ready graph */ }
         if(!skipRecent && !project.closed)void build(project)
@@ -266,20 +307,23 @@ export function createAutoGraphManager({
   /** Agent-triggered build joins automatic scans and updates the same status
    * file. Standalone manual/off projects are serialized too, and still honor
    * scan exclusions without starting file watchers. */
-  async function rebuild(root) {
+  async function rebuild(root, { full = false } = {}) {
     if (disposed) throw new Error('Graphify project manager is stopped')
     const project = projects.get(root)
-    if (project) return build(project, { force: true, manual: true })
+    if (project) return build(project, { force: true, manual: true, full })
     const existing = manualBuilds.get(root)
-    if (existing) return existing
+    if (existing) {
+      if (!full || existing.full) return existing.promise
+      return existing.promise.catch(() => {}).then(() => rebuild(root, { full: true }))
+    }
     const temporary = {
-      root, watcher: undefined, timer: undefined, running: undefined,
+      root, watcher: undefined, timer: undefined, running: undefined, runningFull: undefined,
       dirty: false, closed: false, documentsStale: false,
       lastCompletedAt: 0, graphRevision: null, seen: new Map(),
     }
-    const pending = build(temporary, { force: true, manual: true })
+    const pending = build(temporary, { force: true, manual: true, full })
       .finally(() => { manualBuilds.delete(root) })
-    manualBuilds.set(root, pending)
+    manualBuilds.set(root, { promise: pending, full })
     return pending
   }
 

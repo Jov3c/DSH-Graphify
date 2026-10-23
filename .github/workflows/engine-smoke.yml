@@ -1,0 +1,17 @@
+name: Engine smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  engine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: astral-sh/setup-uv@v6
+      - run: uv venv --python 3.12 .engine
+      - run: uv pip install --python .engine/bin/python graphifyy==0.9.92
+      - run: DSH_GRAPHIFY_BIN="$PWD/.engine/bin/graphify" npm run smoke

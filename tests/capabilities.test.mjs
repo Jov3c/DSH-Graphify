@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { extraToolDescriptors, graphStats } from '../src/capabilities.js'
@@ -92,7 +92,8 @@ test('when opted in, the typed CLI cannot escape authorized project paths or use
   await assert.rejects(s.find('graphify_add').execute({url:'http://example.org'}),/Only credential-free HTTPS/)
   await assert.rejects(s.find('graphify_add').execute({url:'https://127.0.0.1/private'}),/Local\/private addresses/)
   await s.find('graphify_semantic').execute({backend:'ollama',budget:4000})
-  assert.deepEqual(s.calls.at(-1),['extract','.','--backend','ollama','--token-budget','4000'])
+  assert.deepEqual(s.calls.find(call=>call[0]==='extract'&&call.includes('--backend')),['extract','.','--backend','ollama','--token-budget','4000'])
+  assert.deepEqual(s.calls.at(-1),['export','html'],'semantic extraction must regenerate the sidebar view')
  }finally{await rm(root,{recursive:true,force:true})}
 })
 
@@ -101,7 +102,8 @@ test('global registry, cluster, PR detail, and clone use fixed typed CLI argumen
   try{
     const s=toolSuite(root,{advancedActions:true,networkActions:true})
     await s.find('graphify_cluster').execute({resolution:1.5})
-    assert.deepEqual(s.calls.at(-1),['cluster-only','.','--resolution','1.5','--no-label'])
+    assert.deepEqual(s.calls.find(call=>call[0]==='cluster-only'),['cluster-only','.','--resolution','1.5','--no-label'])
+    assert.deepEqual(s.calls.at(-1),['export','html'],'clustering must regenerate the sidebar view')
     await s.find('graphify_pr').execute({mode:'detail',number:42})
     assert.deepEqual(s.calls.at(-1),['prs','42'])
     await s.find('graphify_pr').execute({mode:'triage'})
@@ -126,6 +128,26 @@ test('GitHub PR requests require remote authorization, while local inspection re
   await s.find('graphify_global').execute({action:'list'})
   assert.deepEqual(s.calls.at(-1),['global','list'])
   await assert.rejects(s.find('graphify_global').execute({action:'remove',tag:'x'}),/Enable Advanced/)
+ }finally{await rm(root,{recursive:true,force:true})}
+})
+
+test('graphify_view(html) regenerates the original view and updates sidebar status',async()=>{
+ const root=await setup()
+ try{
+  const calls=[]
+  const run=async(args,cwd)=>{
+    calls.push(args)
+    if(args[0]==='export'&&args[1]==='html')await writeFile(join(cwd,'graphify-out','graph.html'),'<html></html>')
+    return 'Graphify CLI done'
+  }
+  const tools=extraToolDescriptors({project:async()=>root,run,settings:()=>({advancedActions:false,networkActions:false,excludePatterns:[]})})
+  const result=await tools.find(t=>t.name==='graphify_view').execute({view:'html'})
+  assert.deepEqual(calls.at(-1),['export','html'])
+  assert.match(result,/next status poll|Refresh/)
+  const status=JSON.parse(await readFile(join(root,'graphify-out','.dsh-graphify-status.json'),'utf8'))
+  assert.equal(status.state,'ready')
+  assert.equal(status.htmlAvailable,true)
+  assert.match(status.graphRevision,/^[a-f0-9]{24}$/)
  }finally{await rm(root,{recursive:true,force:true})}
 })
 

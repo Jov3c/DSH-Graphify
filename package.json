@@ -1,6 +1,6 @@
 {
   "name": "@jov3c/dsh-graphify",
-  "version": "0.9.2-beta.1",
+  "version": "0.9.3-beta.1",
   "description": "Native DSH integration for original Graphify graphs, tree/callflow, health, wiki exports and opt-in advanced CLI features",
   "type": "module",
   "main": "./lib/index.js",
@@ -13,6 +13,8 @@
     "lib/",
     "cordis.patch.yml",
     "README.md",
+    "MIGRATION.md",
+    "MCP_SETUP.md",
     "LICENSE"
   ],
   "dsh": {
@@ -36,7 +38,9 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
+    "prepare": "npm run build",
     "test": "node --test tests/client.test.mjs tests/host.test.mjs tests/runtime.test.mjs tests/auto.test.mjs tests/settings.test.mjs tests/guidance.test.mjs tests/impact-context.test.mjs tests/capabilities.test.mjs",
+    "smoke": "node scripts/engine-smoke.mjs",
     "check": "npm run build && npm test"
   },
   "license": "MIT",

@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import {
-  UV_VERSION, GRAPHIFY_VERSION, PACKAGE, assetFor,
-  baseDirectory, runtimePaths, runProgram, provisionRuntime,
+  UV_VERSION, GRAPHIFY_VERSION, PACKAGE, VIZ_NODE_LIMIT, assetFor,
+  baseDirectory, runtimePaths, runProgram, runGraphify, provisionRuntime,
 } from '../src/runtime.js'
 
 test('supported uv assets are version and checksum pinned for desktop OSes', () => {
@@ -39,6 +39,26 @@ test('subprocess runner executes argv without shell expansion', async () => {
     runProgram(process.execPath, ['-e', 'process.exit(12)']),
     /Command failed \(12\)/,
   )
+})
+
+test('managed Graphify commands receive the large-graph visualization limit', async () => {
+  const previousBin = process.env.DSH_GRAPHIFY_BIN
+  const previousLimit = process.env.GRAPHIFY_VIZ_NODE_LIMIT
+  process.env.DSH_GRAPHIFY_BIN = process.execPath
+  delete process.env.GRAPHIFY_VIZ_NODE_LIMIT
+  try {
+    const output = await runGraphify(
+      ['-e', 'process.stdout.write(String(process.env.GRAPHIFY_VIZ_NODE_LIMIT))'],
+      process.cwd(),
+      { timeoutMs: 30_000 },
+    )
+    assert.equal(output, VIZ_NODE_LIMIT)
+  } finally {
+    if (previousBin === undefined) delete process.env.DSH_GRAPHIFY_BIN
+    else process.env.DSH_GRAPHIFY_BIN = previousBin
+    if (previousLimit === undefined) delete process.env.GRAPHIFY_VIZ_NODE_LIMIT
+    else process.env.GRAPHIFY_VIZ_NODE_LIMIT = previousLimit
+  }
 })
 
 test('tampered uv archive is rejected and leaves no ready engine', async () => {

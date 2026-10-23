@@ -18,6 +18,11 @@ import { spawn } from 'node:child_process'
 export const UV_VERSION = '0.13.3'
 export const GRAPHIFY_VERSION = '0.9.92'
 export const PACKAGE = 'graphifyy==' + GRAPHIFY_VERSION
+// Upstream aggregates oversized graphs into a community view, but its default
+// 5,000-node cap also applies to that aggregated view. A local project can
+// easily exceed it, so allow a larger bounded view; the generated HTML is still
+// capped by the workspace-file reader at 32 MiB.
+export const VIZ_NODE_LIMIT = '20000'
 const ASSETS = {
   'win32:x64': ['uv-x86_64-pc-windows-msvc.zip', 'bb701bd35b586c45966654ea2703c9bd116a6a4fc0a8ca755bd644c2c41c5ebe'],
   'win32:arm64': ['uv-aarch64-pc-windows-msvc.zip', 'aeaca1a1b721c1686c09b4aa23d57f938df049bed1b8e534b5bf79a032b8b87b'],
@@ -200,9 +205,16 @@ export function ensureRuntime() {
   })
   return pendingRuntime
 }
-export async function runGraphify(args, cwd, { timeoutMs = 180_000, maxOutput = 8192 } = {}) {
+export async function runGraphify(args, cwd, { timeoutMs = 180_000, maxOutput = 8192, env = {} } = {}) {
   const executable = process.env.DSH_GRAPHIFY_BIN || await ensureRuntime()
-  const output = await runProgram(executable, args, { cwd, timeoutMs, maxOutput })
+  const output = await runProgram(executable, args, {
+    cwd, timeoutMs, maxOutput,
+    env: {
+      ...process.env,
+      GRAPHIFY_VIZ_NODE_LIMIT: process.env.GRAPHIFY_VIZ_NODE_LIMIT || VIZ_NODE_LIMIT,
+      ...env,
+    },
+  })
   return output || 'Graphify complete. Refresh the Graphify right sidebar tab.'
 }
 
@@ -215,6 +227,8 @@ const OPTIONAL_EXTRAS = new Set([
   'mcp','pdf','office','video','svg','neo4j','falkordb',
   'postgres','watch','openai','gemini','anthropic','ollama',
   'kimi','sql','chinese','pascal','terraform','r','erlang',
+  'leiden','google','bedrock','dm','ocaml','commonlisp','robot',
+  'vbnet','solidity','all',
 ])
 export async function installGraphifyExtras(extras,{timeoutMs=900_000}={}) {
   if(!Array.isArray(extras)||extras.length<1||extras.length>10||extras.some(x=>!OPTIONAL_EXTRAS.has(x)))

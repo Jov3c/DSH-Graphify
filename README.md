@@ -2,29 +2,29 @@
 
 将开源 [Graphify](https://github.com/Graphify-Labs/graphify) 的代码知识图谱集成进 **DeepSeek Harness（DSH）Desktop**：本地索引代码，在右侧栏查看原版交互式图谱，并让 DSH Agent 根据自然语言调用图谱查询工具。
 
-> **当前版本：0.9.2 Beta。** 核心代码建图和原版关系网络已接入；树状图、调用流程与多项高级 CLI 能力已提供入口。Windows / Linux CI 为接口及逻辑测试，**不等于全部功能都已通过真实 DSH Desktop 端到端验收**。详细覆盖范围与待完成项目见 [MIGRATION.md](./MIGRATION.md)。
+> **当前版本：0.9.3 Beta。** 自动建图会在同一次索引任务中生成原版 `graph.html`，大图谱自动使用社区聚合视图；树状图、调用流程与多项高级 CLI 能力已提供入口。Windows / Linux CI 为接口及逻辑测试，**不等于全部功能都已通过真实 DSH Desktop 端到端验收**。详细覆盖范围与待完成项目见 [MIGRATION.md](./MIGRATION.md)。
 
 ## 功能
 
 | 分类 | 当前能力 |
 | --- | --- |
-| 本地代码图谱 | 自动建立及更新 Graphify `graphify-out/graph.json`；默认 `--code-only`，不调用 AI |
-| 图谱展示 | 右侧栏原版 vis-network 关系网络、节点搜索、社区图例与详情；可选择原版树状图和调用流程 HTML |
+| 本地代码图谱 | 自动建立及更新 Graphify `graphify-out/graph.json`，并在同一任务中生成原版 `graph.html`；默认 `--code-only`，不调用 AI |
+| 图谱展示 | 右侧栏原版 vis-network 关系网络、节点搜索、社区图例与详情；大图谱自动导出社区聚合视图；可选择原版树状图和调用流程 HTML |
 | 主题 | 关系网络默认跟随系统亮暗主题；保留 Graphify 原版手动主题选择 |
-| 更新策略 | 默认停止编辑 20 秒后更新，连续两次自动更新至少间隔 180 秒；Agent 手动建图与后台索引共享同一项目任务队列，避免并行扫描；后台更新不立即重置关系网络，切换侧栏标签再返回保留画面 |
+| 更新策略 | 默认停止编辑 20 秒后更新，连续两次自动更新至少间隔 180 秒；Agent 手动建图与后台索引共享同一项目任务队列，避免并行扫描；后台更新不立即重置关系网络，切换侧栏标签或收起侧栏再返回保留画面 |
 | Agent 代码分析 | 项目架构、节点解释、依赖路径、静态影响分析；对动态依赖与共同入口的候选关系标明局限 |
 | 诊断与导出 | 图谱节点／边统计、孤点和缺失端点、原版多重图诊断、Wiki / Obsidian / GraphML / HTML 导出 |
 | 高级工作流 | Git Hook、PR、社区重聚类、图谱合并／全局登记、记忆／反思、克隆／导入资料等受控操作 |
 | 可选能力 | 显式安装官方 Graphify extras、配置后端执行语义提取；默认不启用、不主动上传源码 |
 
-**图谱视图说明：** 首次打开关系网络会加载 `graphify-out/graph.html`。树状图与调用流程需要先分别生成 `GRAPH_TREE.html` 和 `GRAPH_CALLFLOW.html`，在 DSH 中让 Agent 使用 `graphify_view` 对应选项生成，再从右侧栏选择视图；这些原版 HTML 的 JavaScript 仍需访问对应 CDN。找不到视图文件不代表代码图谱为空。
+**图谱视图说明：** 自动索引会在 `extract` 成功后生成 `graphify-out/graph.html`，首次打开关系网络即可加载。超过 Graphify 默认 5,000 节点时会生成社区聚合视图；插件将可视化上限提高到 20,000 节点，生成的 HTML 仍受侧栏 32 MiB 读取上限约束。树状图与调用流程需要先分别生成 `GRAPH_TREE.html` 和 `GRAPH_CALLFLOW.html`，在 DSH 中让 Agent 使用 `graphify_view` 对应选项生成，再从右侧栏选择视图；这些原版 HTML 的 JavaScript 仍需访问对应 CDN。找不到视图文件不代表代码图谱为空。
 
 ## 安装
 
 ### 环境
 
 - DSH Desktop / Web **0.2.x**，包含右侧栏和 `workspaceFiles` Remote；需要 DSH Host Node.js **22+**。
-- 首次本地索引会从 GitHub Releases 下载校验后的 **uv**，并从 PyPI 安装固定版本的 **graphifyy 0.9.92**。需要联网；日常建图不调用大模型。
+- 首次本地索引会从 GitHub Releases 下载校验后的 **uv**，由 uv 下载托管的 **Python 3.12**，并从 PyPI 安装固定版本的 **graphifyy 0.9.92**。这些是本地引擎安装所需的网络下载，不受 `networkActions` 设置控制。需要联网；日常建图不调用大模型。
 - Windows 缓存目录：`%LOCALAPPDATA%\DSH-Graphify\engine-v2`；macOS / Linux 使用用户缓存目录。不会修改系统 Python 或 PATH。
 
 ### Desktop 安装
@@ -50,18 +50,18 @@ dsh plugin --profile desktop add github:Jov3c/DSH-Graphify
 3. 可直接向 Agent 提问，例如：“分析这个项目的模块结构”“登录模块与数据库怎么联系”“修改登录流程可能影响哪些测试”。插件提供原生工具与项目级提示，但是否实际调用由模型和工具权限决定。
 4. 新图谱生成时，关系网络只提示**加载最新图谱**，不自动清空你的缩放、位置和筛选。手动刷新会加载新图谱并重置布局。
 
-**手动重建**：在同一项目中，Agent 显式调用 `graphify_build` 会复用正在执行的自动索引，避免重复运行。禁用后台扫描时仍可手动建图，扫描结果与错误会更新右侧状态区；失败不会被报告成成功。
+**手动重建**：在同一项目中，Agent 显式调用 `graphify_build` 会复用正在执行的自动索引，避免重复运行；传入 `full=true` 会等待当前扫描结束后强制全量重建。禁用后台扫描时仍可手动建图，扫描结果、`graph.html` 生成结果与错误会更新右侧状态区；失败不会被报告成成功。启用高级/联网权限后，`graphify_view`、`graphify_export`、`graphify_semantic` 和 `graphify_cluster` 修改图谱后也会重新生成侧栏视图并更新状态。
 
 ### 主要原生 Agent 工具
 
 | 工具 | 用途 |
 | --- | --- |
-| `graphify_build` | 建立或更新本地代码图谱 |
+| `graphify_build` | 建立或更新本地代码图谱并生成原版 `graph.html`；`full=true` 全量重建 |
 | `graphify_query` / `graphify_explain` | 自然语言检索、解释类或函数 |
 | `graphify_path` / `graphify_affected` | 跟踪关系、分析变更影响；需结合源码核实 |
 | `graphify_health` | 检查图谱规模、索引时间及静态结构异常 |
-| `graphify_view` | 生成关系网络 / 树状图 / 调用流程原版 HTML |
-| `graphify_export` | 导出 Wiki、Obsidian、GraphML 等 |
+| `graphify_view` | 生成关系网络 / 树状图 / 调用流程原版 HTML；`html` 完成后侧栏会在下次状态轮询检测到新版本 |
+| `graphify_export` | 导出 Wiki、Obsidian、GraphML 等；导出 `html` 同样会更新侧栏状态 |
 | `graphify_workflow` / `graphify_pr` | 查看 Git/PR 状态、冲突及可选分诊 |
 | `graphify_git` / `graphify_cluster` | 显式管理 Git Hook、社区聚类 |
 | `graphify_merge` / `graphify_global` | 显式合并与登记图谱 |
@@ -86,9 +86,11 @@ dsh plugin --profile desktop add github:Jov3c/DSH-Graphify
 
 - 图谱的静态导入、调用关系**不能完整证明**事件、回调、反射、依赖注入等运行时影响范围；影响分析需回到源码与测试核实。
 - 原版关系网络、Tree、Call Flow 的 HTML 依赖对应第三方 JS CDN，无法保证纯离线显示。
+- 关系网络在超过 20,000 个社区节点或生成 HTML 超过 32 MiB 时无法在侧栏显示；`graphify_health` 和影响分析的 `graph.json` 读取上限为 64 MiB。超大项目需要用 Graphify 的其他导出方式或拆分索引范围。单社区小图可能不会生成 `graph.html`，状态区会明确提示。
+- 首次安装本地引擎（uv、托管 Python 3.12、graphifyy）需要联网；自动模式不会先弹出许可对话框，状态区只提供构建状态，不展示逐行安装日志。
 - Graphify MCP 目前通过 [MCP_SETUP.md](./MCP_SETUP.md) **手动配置**，尚无插件内一键连接和端到端验收。
 - Neo4j / FalkorDB 等数据库写入、所有可选媒体解析器、Graphify Guard/Hook 体系的 DSH 深度接入仍未完成；细节见 [MIGRATION.md](./MIGRATION.md)。
-- 当前适配以 Graphify 0.9.92 为基准；上游版本变更后需要做兼容性测试。
+- 当前适配以 Graphify 0.9.92 为基准；上游 v8 已到 0.9.94，升级前需要重新做 CLI 与 HTML 兼容性测试。
 
 ## 开发与验证
 
@@ -96,7 +98,15 @@ dsh plugin --profile desktop add github:Jov3c/DSH-Graphify
 npm run check
 ```
 
-这将根据 `src/` 构建 `lib/`，并运行 Node.js 测试。入口：`src/index.js`（Host / Agent 工具）、`src/auto.js`（会话与索引）、`src/runtime.js`（引擎安装）、`src/capabilities.js`（官方 CLI 集成）、`src/client.js`（右侧栏）。提交前保持 `src/` 与预构建 `lib/` 一致。
+这将根据 `src/` 构建 `lib/`，并运行 Node.js 测试。CI 还会检查构建后的 `lib/` 是否与提交一致，避免预构建客户端漂移。入口：`src/index.js`（Host / Agent 工具）、`src/auto.js`（会话、索引与视图状态）、`src/runtime.js`（引擎安装）、`src/capabilities.js`（官方 CLI 集成）、`src/client.js`（右侧栏）。提交前保持 `src/` 与预构建 `lib/` 一致。
+
+可选的真实引擎冒烟测试（需要已安装的引擎或 `DSH_GRAPHIFY_BIN`）：
+
+```powershell
+npm run smoke
+```
+
+它会在临时项目里执行一次真实 `extract`，并确认自动生成 `graph.html`。GitHub Actions 里可手动运行 **Engine smoke** 工作流完成同样验证。
 
 ## 相关文档
 

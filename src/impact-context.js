@@ -7,7 +7,7 @@ import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 
 const IMPORTS = new Set(['imports', 'imports_from', 'dynamic_import', 're_exports'])
-const MAX_BYTES = 32 * 1024 * 1024
+const MAX_BYTES = 64 * 1024 * 1024
 const clean = value => String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 180)
 const source = node => clean(node?.source_file ?? '')
 const label = node => clean(node?.label ?? node?.id ?? '?')
@@ -63,7 +63,7 @@ export function inspectImpactGraph(raw, requested, { maxCandidates = 14 } = {}) 
 
 export async function readImpactContext(root, name) {
   const file=join(root,'graphify-out','graph.json')
-  if((await stat(file)).size > MAX_BYTES) return 'Graph context omitted: graph.json exceeds 32 MiB.'
+  if((await stat(file)).size > MAX_BYTES) return 'Graph context omitted: graph.json exceeds 64 MiB.'
   const raw=JSON.parse(await readFile(file,'utf8'))
   const result=inspectImpactGraph(raw,name)
   const list=(items)=>items.length ? items.map(x => '  - '+JSON.stringify(x)).join('\n') : '  (none)'

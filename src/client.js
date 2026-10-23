@@ -224,7 +224,7 @@ function viewMissingLabel(view) {
     ? '尚未生成树状图。让 DSH Agent 生成 Graphify tree 视图（graphify_view，view=tree），再点击刷新。'
     : view==='callflow'
     ? '尚未生成调用流程图。让 DSH Agent 生成 Graphify callflow 视图（graphify_view，view=callflow），再点击刷新。'
-    : '尚未生成 graphify-out/graph.html。等待自动索引完成，或检查图谱构建状态。'
+    : '尚未生成 graphify-out/graph.html。等待自动索引完成；若状态已就绪，让 Agent 运行 graphify_view（view=html），或点击刷新重试。'
 }
 function OriginalGraphPreview({ loadHtml, view='network', revision, enabled, onLoadError, onLoadComplete }) {
   const [frameUrl, setFrameUrl] = useState('')
@@ -339,8 +339,9 @@ function GraphPanel(props) {
     autoStatus ? h('div', { role: 'status', style: { fontSize: 12, padding: '7px 10px', background: 'rgba(128,128,128,.09)', borderRadius: 8, overflowWrap: 'anywhere' } },
       autoStatus.state === 'building' ? '● 正在生成代码图谱… ' :
       autoStatus.state === 'updating' ? '● 正在更新图谱… ' :
-      autoStatus.state === 'ready' ? '✓ 图谱已就绪。 ' :
-      autoStatus.state === 'paused' ? 'Ⅱ 自动扫描已暂停。 ' : '⚠ 图谱构建失败：',
+      autoStatus.state === 'ready'
+        ? (autoStatus.htmlAvailable === false ? '⚠ 代码图谱已就绪，但关系网络视图未生成。 ' : '✓ 图谱已就绪。 ')
+        : autoStatus.state === 'paused' ? 'Ⅱ 自动扫描已暂停。 ' : '⚠ 图谱构建失败：',
       autoStatus.detail || ''
     ) : null,
     pendingRevision && !showSettings ? h('div',{role:'status',style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',fontSize:12,padding:'8px 10px',background:'rgba(128,128,128,.10)',borderRadius:8}},
@@ -366,6 +367,7 @@ exports.inject = ['slots', 'sidebarRightTabs', 'remote', 'remote.workspaceFiles'
 exports.apply = function apply(ctx) {
   ctx.effect(() => ctx.sidebarRightTabs.register({
     id: PLUGIN_ID, kind: 'graphify', priority: 'extension', title: () => 'Graphify',
+    keepMounted: true,
     guide: [{ id: 'graphify.open', order: 80, title: () => 'Graphify', description: () => 'Interactive code knowledge graph' }],
   }), 'dsh-graphify:tab-definition')
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({

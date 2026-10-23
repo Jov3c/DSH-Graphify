@@ -31,8 +31,12 @@ function fakeWatcher() {
   }
   return { entries, watchImpl }
 }
+function isHtmlExport(args) {
+  return args[0] === 'export' && args[1] === 'html'
+}
 function makeRunner(calls) {
   return async (args, root) => {
+    if (isHtmlExport(args)) return 'html'
     calls.push([...args])
     await mkdir(join(root, 'graphify-out'), { recursive: true })
     await writeFile(join(root, 'graphify-out', 'graph.json'), JSON.stringify({ nodes: [{ id: 'test' }], links: [] }))
@@ -184,10 +188,14 @@ test('ready state reports original HTML availability separately from graph data'
   const base = await mkdtemp(join(tmpdir(),'dsh-gfy-html-'))
   const watcher=fakeWatcher()
   const manager=createAutoGraphManager({
-    run: async(_args,root)=>{
+    run: async(args,root)=>{
       await mkdir(join(root,'graphify-out'),{recursive:true})
+      if (isHtmlExport(args)) {
+        await writeFile(join(root,'graphify-out','graph.html'),'<html></html>')
+        return 'html'
+      }
       await writeFile(join(root,'graphify-out','graph.json'),'{"nodes":[{"id":"x"}],"links":[]}')
-      await writeFile(join(root,'graphify-out','graph.html'),'<html></html>')
+      return 'extract'
     },
     resolveProject:permitted(base),workspaceRoot:()=>base,watchImpl:watcher.watchImpl,
   })
@@ -198,6 +206,8 @@ test('ready state reports original HTML availability separately from graph data'
     const status=JSON.parse(await readFile(join(base,'graphify-out','.dsh-graphify-status.json'),'utf8'))
     assert.equal(status.state,'ready')
     assert.equal(status.htmlAvailable,true)
+    assert.equal(status.viewAttempted,true)
+    assert.match(status.graphRevision,/^[a-f0-9]{24}$/)
   }finally{manager.stop();await rm(base,{recursive:true,force:true})}
 })
 
@@ -306,9 +316,15 @@ test('manual Graphify build in manual mode serializes concurrent calls and honor
   const release=new Promise(resolve=>{finish=resolve})
   const manager=createAutoGraphManager({
     run:async(args,root)=>{
+      if(isHtmlExport(args)){
+        await mkdir(join(root,'graphify-out'),{recursive:true})
+        await writeFile(join(root,'graphify-out','graph.html'),'<html></html>')
+        return 'html'
+      }
       count++
       assert.deepEqual(args.slice(0,3),['extract','.','--code-only'])
       assert.ok(args.includes('secrets/'))
+      assert.ok(args.includes('--force'))
       await release
       await mkdir(join(root,'graphify-out'),{recursive:true})
       await writeFile(join(root,'graphify-out','graph.json'),'{"nodes":[],"links":[]}')
@@ -318,14 +334,15 @@ test('manual Graphify build in manual mode serializes concurrent calls and honor
     getSettings:()=>({mode:'manual',scope:'sessions',excludePatterns:['secrets/'],debounceSeconds:20,minIntervalSeconds:180}),
   })
   try{
-    const first=manager.rebuild(base)
-    const second=manager.rebuild(base)
+    const first=manager.rebuild(base,{full:true})
+    const second=manager.rebuild(base,{full:true})
     finish()
     const results=await Promise.all([first,second])
     assert.deepEqual(results,['manual scan succeeded','manual scan succeeded'])
     assert.equal(count,1,'simultaneous Agent builds must not duplicate the scan')
     const status=JSON.parse(await readFile(join(base,'graphify-out','.dsh-graphify-status.json'),'utf8'))
     assert.equal(status.state,'ready')
+    assert.equal(status.htmlAvailable,true)
     assert.equal(status.watching,false)
   }finally{finish?.();manager.stop();await rm(base,{recursive:true,force:true})}
 })
@@ -337,7 +354,12 @@ test('Agent build joins an in-flight automatic graph scan without duplicate refr
   const blocker=new Promise(resolve=>{release=resolve})
   let scans=0
   const manager=createAutoGraphManager({
-    run:async(_args,root)=>{
+    run:async(args,root)=>{
+      if(isHtmlExport(args)){
+        await mkdir(join(root,'graphify-out'),{recursive:true})
+        await writeFile(join(root,'graphify-out','graph.html'),'<html></html>')
+        return 'html'
+      }
       scans++
       entered()
       await blocker
@@ -356,6 +378,40 @@ test('Agent build joins an in-flight automatic graph scan without duplicate refr
     assert.equal(await manual,'shared scan completed')
     await wait(80)
     assert.equal(scans,1,'joining an automatic scan must not schedule another scan')
+  }finally{release?.();manager.stop();await rm(base,{recursive:true,force:true})}
+})
+
+test('full Agent rebuild during an automatic scan runs a forced scan afterwards',async()=>{
+  const base=await mkdtemp(join(tmpdir(),'dsh-gfy-full-join-'))
+  let entered,release
+  const start=new Promise(resolve=>{entered=resolve})
+  const blocker=new Promise(resolve=>{release=resolve})
+  const scans=[]
+  const manager=createAutoGraphManager({
+    run:async(args,root)=>{
+      if(isHtmlExport(args)){
+        await mkdir(join(root,'graphify-out'),{recursive:true})
+        await writeFile(join(root,'graphify-out','graph.html'),'<html></html>')
+        return 'html'
+      }
+      scans.push([...args])
+      if(scans.length===1){entered();await blocker}
+      await mkdir(join(root,'graphify-out'),{recursive:true})
+      await writeFile(join(root,'graphify-out','graph.json'),'{"nodes":[],"links":[]}')
+      return 'scan complete'
+    },
+    resolveProject:permitted(base),workspaceRoot:()=>base,
+    watchImpl:fakeWatcher().watchImpl,debounceMs:25,
+  })
+  try{
+    await manager.attach(session('full-join',base))
+    await start
+    const manual=manager.rebuild(base,{full:true})
+    release()
+    assert.equal(await manual,'scan complete')
+    assert.equal(scans.length,2,'a full request must not reuse an incremental scan')
+    assert.equal(scans[0].includes('--force'),false)
+    assert.equal(scans[1].includes('--force'),true)
   }finally{release?.();manager.stop();await rm(base,{recursive:true,force:true})}
 })
 
