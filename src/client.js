@@ -214,6 +214,17 @@ function graphRefreshAction(previous, next, previewLoaded, hadStatus) {
   if (!previous && !hadStatus) return 'none'
   return 'notify'
 }
+function sameStatus(previous, next) {
+  if (!previous || !next) return previous === next
+  return previous.state === next.state
+    && previous.detail === next.detail
+    && previous.graphRevision === next.graphRevision
+    && previous.htmlAvailable === next.htmlAvailable
+    && previous.documentsStale === next.documentsStale
+    && previous.watching === next.watching
+    && previous.viewAttempted === next.viewAttempted
+    && previous.htmlError === next.htmlError
+}
 function viewLoadingLabel(view) {
   return view==='tree' ? '正在加载原版树状图…'
     : view==='callflow' ? '正在加载原版调用流程…'
@@ -286,6 +297,7 @@ function GraphPanel(props) {
   const [pendingRevision,setPendingRevision] = useState(null)
   const lastSeenRevision=useRef(null)
   const statusSeen=useRef(false)
+  const statusFailures=useRef(0)
   const previewLoaded=useRef(false)
   // Each view owns its iframe and refresh revision; navigating away from a
   // view does not destroy the current zoom/filter/expansion state.
@@ -311,7 +323,8 @@ function GraphPanel(props) {
         const bytes = await props.loadStatus(controller.signal)
         const value = JSON.parse(new TextDecoder().decode(bytes))
         if (!active || !['ready','building','updating','error','paused'].includes(value?.state)) return
-        setAutoStatus(value)
+        statusFailures.current=0
+        setAutoStatus(previous => sameStatus(previous, value) ? previous : value)
         if (value.state === 'ready' && value.graphRevision) {
           const action=graphRefreshAction(lastSeenRevision.current,value.graphRevision,previewLoaded.current,statusSeen.current)
           lastSeenRevision.current=value.graphRevision
@@ -319,7 +332,13 @@ function GraphPanel(props) {
           else if(action==='notify')setPendingRevision(value.graphRevision)
         }
         statusSeen.current=true
-      } catch (_error) { if (active) setAutoStatus(null) }
+      } catch (_error) {
+        // Atomic status writes should make this rare. Keep the last good
+        // status through a transient read, and only clear it after repeated
+        // failures so the panel never flashes empty.
+        statusFailures.current += 1
+        if (active && statusFailures.current >= 4) setAutoStatus(null)
+      }
       finally { inFlight = false }
     }
     void probe()
@@ -336,20 +355,23 @@ function GraphPanel(props) {
         h('button', { style: BUTTON, 'aria-label': 'Graphify 设置', onClick: () => setShowSettings(x => !x) }, showSettings ? '返回图谱' : '⚙ 设置')
       )
     ),
-    autoStatus ? h('div', { role: 'status', style: { fontSize: 12, padding: '7px 10px', background: 'rgba(128,128,128,.09)', borderRadius: 8, overflowWrap: 'anywhere' } },
-      autoStatus.state === 'building' ? '● 正在生成代码图谱… ' :
-      autoStatus.state === 'updating' ? '● 正在更新图谱… ' :
-      autoStatus.state === 'ready'
-        ? (autoStatus.htmlAvailable === false ? '⚠ 代码图谱已就绪，但关系网络视图未生成。 ' : '✓ 图谱已就绪。 ')
-        : autoStatus.state === 'paused' ? 'Ⅱ 自动扫描已暂停。 ' : '⚠ 图谱构建失败：',
-      autoStatus.detail || ''
-    ) : null,
-    pendingRevision && !showSettings ? h('div',{role:'status',style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',fontSize:12,padding:'8px 10px',background:'rgba(128,128,128,.10)',borderRadius:8}},
-      h('span',{},'图谱已更新；为保留当前缩放、节点选择和筛选，没有自动刷新画面。'),
-      h('button',{style:BUTTON,onClick:()=>{setView('network');refreshView('network')}},'加载最新图谱')
-    ):null,
+    h('div', { style: { height: 34, minHeight: 34, flexShrink: 0, display: 'flex', alignItems: 'stretch' } },
+      autoStatus ? h('div', { role: 'status', title: autoStatus.detail || '', style: { flex: 1, fontSize: 12, height: 34, lineHeight: '34px', padding: '0 10px', background: 'rgba(128,128,128,.09)', borderRadius: 8, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', boxSizing: 'border-box' } },
+        autoStatus.state === 'building' ? '● 正在生成代码图谱… ' :
+        autoStatus.state === 'updating' ? '● 正在更新图谱… ' :
+        autoStatus.state === 'ready'
+          ? (autoStatus.htmlAvailable === false ? '⚠ 代码图谱已就绪，但关系网络视图未生成。 ' : '✓ 图谱已就绪。 ')
+          : autoStatus.state === 'paused' ? 'Ⅱ 自动扫描已暂停。 ' : '⚠ 图谱构建失败：',
+        autoStatus.detail || ''
+      ) : null
+    ),
     showSettings ? h(GraphSettings,{form:props.settingsForm,close:()=>setShowSettings(false)}):null,
-    h('div',{style:{display:showSettings?'none':'flex',flex:1,minHeight:0,flexDirection:'column'}},
+    h('div',{style:{position:'relative',display:showSettings?'none':'flex',flex:1,minHeight:0,flexDirection:'column'}},
+      pendingRevision && !showSettings ? h('div',{role:'status',style:{position:'absolute',zIndex:2,top:8,left:8,right:8,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',fontSize:12,padding:'8px 10px',background:'rgba(128,128,128,.24)',border:'1px solid rgba(128,128,128,.35)',borderRadius:8,backdropFilter:'blur(8px)',boxShadow:'0 4px 12px rgba(0,0,0,.12)'}},
+        h('span',{},'图谱已更新；为保留当前缩放、节点选择和筛选，没有自动刷新画面。'),
+        h('button',{style:BUTTON,onClick:()=>{setView('network');refreshView('network')}},'加载最新图谱'),
+        h('button',{style:BUTTON,onClick:()=>setPendingRevision(null)},'稍后')
+      ):null,
       h('div',{key:'network',style:{display:view==='network'?'flex':'none',flex:1,minHeight:0,flexDirection:'column'}},
         h(OriginalGraphPreview,{loadHtml:props.loadHtml,view:'network',enabled:tab.visible&&view==='network',revision:refresh.network,onLoadComplete})
       ),

@@ -1,10 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join, relative, resolve, isAbsolute } from 'node:path'
 import { tmpdir } from 'node:os'
-import { classifyChange, createAutoGraphManager, excluded, allowedProject } from '../src/auto.js'
+import { classifyChange, createAutoGraphManager, excluded, allowedProject, updateGraphStatus } from '../src/auto.js'
 
 const wait = ms => new Promise(done => setTimeout(done, ms))
 async function waitFor(predicate, timeout = 3000) {
@@ -62,6 +62,21 @@ test('change classifier ignores generated output and dependencies', () => {
   assert.equal(classifyChange('README.md'), 'document')
   assert.equal(classifyChange('src'), 'code')
   assert.equal(classifyChange(undefined), 'code')
+})
+
+test('status updates replace the file atomically and leave no temporary file',async()=>{
+  const base=await mkdtemp(join(tmpdir(),'dsh-gfy-status-atomic-'))
+  try{
+    await mkdir(join(base,'graphify-out'))
+    await writeFile(join(base,'graphify-out','graph.json'),'{"nodes":[],"links":[]}')
+    await writeFile(join(base,'graphify-out','graph.html'),'<html></html>')
+    await updateGraphStatus(base,'status write test')
+    const status=JSON.parse(await readFile(join(base,'graphify-out','.dsh-graphify-status.json'),'utf8'))
+    assert.equal(status.state,'ready')
+    assert.equal(status.htmlAvailable,true)
+    const files=await readdir(join(base,'graphify-out'))
+    assert.equal(files.some(name=>name.endsWith('.tmp')),false)
+  }finally{await rm(base,{recursive:true,force:true})}
 })
 
 test('new session auto-builds locally; subsequent source saves debounce incremental update', async () => {

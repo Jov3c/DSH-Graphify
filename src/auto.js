@@ -5,7 +5,7 @@
  */
 import { watch as watchFs, existsSync, statSync, createReadStream } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { mkdir, writeFile, readFile } from 'node:fs/promises'
+import { mkdir, writeFile, readFile, rename, rm } from 'node:fs/promises'
 import { join, extname, relative, isAbsolute, resolve } from 'node:path'
 import { DEFAULT_SETTINGS } from './defaults.js'
 
@@ -67,8 +67,27 @@ async function writeStatus(root, state, detail = '', extras = {}) {
   await mkdir(folder, { recursive: true })
   const path = join(folder, STATUS_NAME)
   const payload = { version: 1, state, detail: String(detail).slice(0, 700), updatedAt: now(), ...extras }
-  // The file is small; the workspace-file remote can read it directly.
-  await writeFile(path, JSON.stringify(payload) + '\n', { encoding: 'utf8' })
+  const temporary = join(folder, `.dsh-graphify-status.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`)
+  await writeFile(temporary, JSON.stringify(payload) + '\n', { encoding: 'utf8' })
+  try {
+    // Replace the status atomically so the 2.5s sidebar poll never observes a
+    // truncated JSON document and temporarily removes the status bar.
+    let failure
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await rename(temporary, path)
+        failure = undefined
+        break
+      } catch (error) {
+        failure = error
+        if (!['EPERM', 'EBUSY', 'EACCES'].includes(error?.code)) break
+        await new Promise(resolve => setTimeout(resolve, 10 * (attempt + 1)))
+      }
+    }
+    if (failure) throw failure
+  } finally {
+    await rm(temporary, { force: true }).catch(() => {})
+  }
 }
 async function graphRevision(file) {
   if (!existsSync(file)) return null
